@@ -1,0 +1,109 @@
+defmodule Localize.Translate.MixProject do
+  use Mix.Project
+
+  @version "0.1.0"
+
+  def project do
+    [
+      app: :localize_translate,
+      version: @version,
+      elixir: "~> 1.17",
+      description: "Embedded translations for Ecto schemas",
+      build_embedded: Mix.env() == :prod,
+      start_permanent: Mix.env() == :prod,
+      aliases: aliases(),
+      elixirc_paths: elixirc_paths(Mix.env()),
+      app_list: app_list(Mix.env()),
+      package: package(),
+      deps: deps(),
+
+      # Docs
+      name: "Localize Translate",
+      source_url: "https://github.com/elixir-localize/localize_translate",
+      homepage_url: "https://hex.pm/packages/localize_translate",
+      docs: [
+        source_ref: "v#{@version}",
+        main: "readme",
+        formatters: ["html"],
+        extras: [
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      ],
+      dialyzer: [
+        plt_add_apps: ~w(ecto ecto_sql inets mix)a
+      ]
+    ]
+  end
+
+  def application do
+    [extra_applications: [:logger]]
+  end
+
+  defp deps do
+    [
+      {:ecto, "~> 3.0"},
+
+      # Optional dependencies
+      {:ecto_sql, "~> 3.0", optional: true},
+      {:postgrex, "~> 0.19 or ~> 1.0", optional: true},
+
+      # Doc dependencies
+      {:ex_doc, ">= 0.0.0", only: [:dev, :release], runtime: false},
+      {:dialyxir, "~> 1.0", only: [:dev, :test], runtime: false, optional: true}
+    ] ++ maybe_json_polyfill()
+  end
+
+  defp maybe_json_polyfill do
+    if Code.ensure_loaded?(:json) do
+      []
+    else
+      [{:json_polyfill, "~> 0.2 or ~> 1.0"}]
+    end
+  end
+
+  defp package do
+    [
+      licenses: ["Apache-2.0"],
+      maintainers: ["Kip Cole"],
+      links: links(),
+      files: [
+        "lib",
+        "mix.exs",
+        "README.md",
+        "CHANGELOG.md"
+      ]
+    ]
+  end
+
+  def links do
+    %{
+      "GitHub" => "https://github.com/elixir-localize/localize_translate",
+      "Readme" =>
+        "https://github.com/elixir-localize/localize_translate/blob/v#{@version}/README.md",
+      "Changelog" =>
+        "https://github.com/elixir-localize/localize_translate/blob/v#{@version}/CHANGELOG.md"
+    }
+  end
+
+  # Include Ecto and Postgrex applications in tests
+  def app_list(:test), do: [:ecto, :postgrex]
+  def app_list(_), do: app_list()
+  def app_list, do: []
+
+  # Always compile files in "lib". In tests compile also files in
+  # "test/support"
+  def elixirc_paths(:test), do: elixirc_paths() ++ ["mix", "test/support"]
+  def elixirc_paths(:dev), do: elixirc_paths() ++ ["mix"]
+  def elixirc_paths(_), do: elixirc_paths()
+  def elixirc_paths, do: ["lib"]
+
+  defp aliases do
+    [
+      test: [
+        "ecto.migrate --quiet",
+        "test"
+      ]
+    ]
+  end
+end
