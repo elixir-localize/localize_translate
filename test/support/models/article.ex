@@ -26,7 +26,11 @@ defmodule Localize.Translate.Article do
   """
 
   use Ecto.Schema
-  use Localize.Translate, translates: [:title, :body], locales: [:en, :es, :fr], default_locale: :en
+
+  use Localize.Translate,
+    translates: [:title, :body],
+    locales: [:en, :es, :fr],
+    default_locale: :en
 
   import Ecto.Changeset
 

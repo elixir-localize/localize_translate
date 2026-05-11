@@ -1,11 +1,16 @@
 defmodule Localize.Translate.MixProject do
   use Mix.Project
 
+  @name "Localize Translate"
   @version "0.1.0"
+  @source_url "https://github.com/elixir-localize/localize_translate"
 
   def project do
     [
       app: :localize_translate,
+      name: @name,
+      source_url: @source_url,
+      homepage_url: "https://hex.pm/packages/localize_translate",
       version: @version,
       elixir: "~> 1.17",
       description: "Embedded translations for Ecto schemas",
@@ -16,22 +21,28 @@ defmodule Localize.Translate.MixProject do
       app_list: app_list(Mix.env()),
       package: package(),
       deps: deps(),
-
-      # Docs
-      name: "Localize Translate",
-      source_url: "https://github.com/elixir-localize/localize_translate",
-      homepage_url: "https://hex.pm/packages/localize_translate",
-      docs: [
-        source_ref: "v#{@version}",
-        main: "readme",
-        formatters: ["html"],
-        extras: [
-          "README.md",
-          "CHANGELOG.md"
-        ]
-      ],
+      docs: docs(),
       dialyzer: [
         plt_add_apps: ~w(ecto ecto_sql inets mix)a
+      ]
+    ]
+  end
+
+  defp docs do
+    [
+      source_ref: "v#{@version}",
+      main: "readme",
+      formatters: ["html"],
+      extras: [
+        "README.md",
+        "guides/translatable_database_systems.md": [
+          title: "Building Translatable Database Systems"
+        ],
+        "LICENSE.md": [title: "License"],
+        "CHANGELOG.md": [title: "Changelog"]
+      ],
+      groups_for_extras: [
+        Guides: ~r"guides/.*"
       ]
     ]
   end
@@ -69,8 +80,12 @@ defmodule Localize.Translate.MixProject do
       links: links(),
       files: [
         "lib",
+        "guides",
+      files: [
+        "lib",
         "mix.exs",
         "README.md",
+        "LICENSE.md",
         "CHANGELOG.md"
       ]
     ]

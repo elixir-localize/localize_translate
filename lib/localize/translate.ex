@@ -164,6 +164,48 @@ defmodule Localize.Translate do
     [build_field_schema: true]
   end
 
+  @doc """
+  Defines the embedded translation container field on an `Ecto.Schema`.
+
+  Within an `Ecto.Schema` block, expands into an `embeds_one/3` declaration for the named
+  container field plus auto-generated `Translations` and `Translations.Fields` embedded
+  schemas — one `embeds_one` per non-default locale, each holding the translatable string
+  fields declared in `:translates`.
+
+  ### Arguments
+
+  * `field_name` is the name of the container field on the parent schema, given as an atom
+    (commonly `:translations`).
+
+  * `translation_module` (optional) is the alias name of the generated translation schema.
+    Defaults to `Translations`. Pass an alias to use a different module name under the parent.
+
+  * `locales_or_options` (optional) is either an explicit list of locale atoms, or a keyword
+    list of options. When omitted, the locales configured via the `:locales` option on
+    `use Localize.Translate` are used.
+
+  ### Options
+
+  * `:build_field_schema` - when `true` (the default), generates the inner
+    `Translations.Fields` module. Set to `false` if you want to define that module yourself.
+
+  ### Examples
+
+      defmodule MyApp.Article do
+        use Ecto.Schema
+        use Localize.Translate,
+          translates: [:title, :body],
+          locales: [:en, :es, :fr],
+          default_locale: :en
+
+        schema "articles" do
+          field :title, :string
+          field :body, :string
+          translations :translations
+        end
+      end
+
+  """
   defmacro translations(field_name, translation_module \\ nil, locales_or_options \\ []) do
     module = __CALLER__.module
     translation_module = trans_module(translation_module)
@@ -189,6 +231,25 @@ defmodule Localize.Translate do
     end
   end
 
+  @doc """
+  Defines the embedded translation container field with explicit locales.
+
+  Four-arity form of `translations/3`. Use this when you want to override the configured
+  `:locales` option for a single schema, or to pass an options keyword list alongside an
+  explicit locale list.
+
+  ### Arguments
+
+  * `field_name` is the name of the container field on the parent schema, as an atom.
+
+  * `translation_module` is the alias name of the generated translation schema.
+
+  * `locales` is the explicit list of locale atoms for which translation embeds are
+    generated. The schema's `:default_locale` is excluded.
+
+  * `options` is a keyword list of options, the same as accepted by `translations/3`.
+
+  """
   defmacro translations(field_name, translation_module, locales, options) do
     caller = __CALLER__.module
     options = Keyword.merge(Localize.Translate.default_trans_options(), options)
@@ -206,6 +267,7 @@ defmodule Localize.Translate do
     end
   end
 
+  @doc false
   defmacro __build_embedded_schema__(env) do
     translation_module = Module.get_attribute(env.module, :translation_module)
     fields = Module.get_attribute(env.module, :trans_fields)

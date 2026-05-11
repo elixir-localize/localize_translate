@@ -9,13 +9,30 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
     @doc """
     Generates a SQL fragment for accessing a translated field in an `Ecto.Query`.
 
-    The generated SQL fragment can be coupled with the rest of the functions and operators provided
-    by `Ecto.Query` and `Ecto.Query.API`.
+    The generated SQL fragment can be coupled with the rest of the functions and operators
+    provided by `Ecto.Query` and `Ecto.Query.API`.
+
+    ### Arguments
+
+    * `module` is the `Ecto.Schema` module that uses `Localize.Translate`. Validated at
+      compile time.
+
+    * `translatable` is either a query binding (such as `a`) for whole-record access, or a
+      field access expression (such as `a.title`) for a specific translatable field.
+
+    * `locale` is either a single locale (atom or string) or a list of locales acting as a
+      fallback chain. May be a literal, a variable, or a runtime expression.
+
+    ### Returns
+
+    A `fragment/1` AST suitable for use in `Ecto.Query` clauses. The fragment evaluates to
+    the translated value with fallback to the base column, or `NULL` when no translation
+    exists for the requested locales.
 
     ### Safety
 
-    This macro will emit errors when used with untranslatable schema modules or fields. Errors are
-    emitted during the compilation phase thus avoiding runtime errors after the queries are built.
+    This macro emits errors when used with untranslatable schema modules or fields. Errors
+    are emitted during compilation so invalid queries fail before they can run.
 
     ### Examples
 
@@ -23,7 +40,7 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
     [Structured translations](Localize.Translate.html#module-structured-translations):
 
         # Return all articles that have a Spanish translation
-        from a in Article, where: not is_nil(translated(Article, a, :es)))
+        from a in Article, where: not is_nil(translated(Article, a, :es))
         #=> SELECT a0."id", a0."title", a0."body", a0."translations"
         #=> FROM "articles" AS a0
         #=> WHERE (NOT (NULLIF((a0."translations"->'es'),'null') IS NULL))
@@ -42,24 +59,25 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
 
     ### Structured translations vs free-form translations
 
-    The `Localize.Translate.QueryBuilder` works with both structured translations and free-form
+    `Localize.Translate.QueryBuilder` works with both structured translations and free-form
     translations.
 
-    When using structured translations, the translations are saved as an embedded schema. This
-    means that **the locale keys will be always present even if there is no translation for that
-    locale.** In the database we have a `NULL` value (`nil` in Elixir).
+    When using structured translations, the translations are saved as an embedded schema.
+    This means that **the locale keys will be always present even if there is no
+    translation for that locale.** In the database we have a `NULL` value (`nil` in
+    Elixir).
 
         # If MyApp.Article uses structured translations
-        from a in Article, where: not is_nil(translated(Article, a, :es)))
+        from a in Article, where: not is_nil(translated(Article, a, :es))
         #=> SELECT a0."id", a0."title", a0."body", a0."translations"
         #=> FROM "articles" AS a0
         #=> WHERE (NOT (NULLIF((a0."translations"->'es'),'null') IS NULL))
 
     ### More complex queries
 
-    The `translated/3` macro can also be used with relations and joined schemas.
-    For more complex examples take a look at the QueryBuilder tests (the file
-    is located in `test/localize/translate/query_builder_test.exs`).
+    The `translated/3` macro can also be used with relations and joined schemas. For more
+    complex examples take a look at the QueryBuilder tests (the file is located in
+    `test/localize/translate/query_builder_test.exs`).
 
     """
 
@@ -74,17 +92,26 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
     end
 
     @doc """
-    Generates a SQL fragment for accessing a translated field in an `Ecto.Query`
-    `select` clause and returning it aliased to the original field name.
+    Generates a SQL fragment for use in an `Ecto.Query` `select` clause, aliased to the
+    original field name.
 
-    Therefore, this macro returns a translated field with the name of the
-    table's base column name which means Ecto can load it into a struct
-    without further processing or conversion.
+    Wraps `translated/3` so the returned column carries the base column's name. Ecto can
+    therefore load the translated value directly into the schema struct without further
+    processing or conversion.
 
-    This macro delegates to the macro `translated/3` and wraps the result in a
-    fragment with the column alias.
+    ### Arguments
 
-    See `Localize.Translate.QueryBuilder.translated/3` for more information.
+    * `module` is the `Ecto.Schema` module that uses `Localize.Translate`.
+
+    * `translatable` is a field access expression such as `a.title`. The base field name is
+      used as the column alias.
+
+    * `locale` is either a single locale or a list of locales acting as a fallback chain.
+
+    ### Returns
+
+    A `fragment/1` AST that selects the translated value aliased to the original field
+    name. See `translated/3` for the underlying SQL produced.
 
     """
 
