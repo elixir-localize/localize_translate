@@ -32,7 +32,7 @@ defmodule Localize.Translate.MixProject do
     [
       source_ref: "v#{@version}",
       main: "readme",
-      formatters: ["html"],
+      formatters: ["html", "markdown"],
       extras: [
         "README.md",
         "guides/translatable_database_systems.md": [
@@ -81,7 +81,6 @@ defmodule Localize.Translate.MixProject do
       files: [
         "lib",
         "guides",
-      files: [
         "lib",
         "mix.exs",
         "README.md",
