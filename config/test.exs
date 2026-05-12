@@ -9,8 +9,7 @@ config :localize_translate, Localize.Translate.Repo,
   pool: Ecto.Adapters.SQL.Sandbox,
   log: false
 
-# Prime Localize's default locale to `:en` so the lazy first-use resolution doesn't
-# fall through to `LANG`/`LC_*` env vars (which on Linux CI runners can be `POSIX` or
-# `C`, fail validation, and trigger recursive locale lookup while formatting the
-# error message — observed as 60-second test timeouts).
+# Set the application default locale explicitly. Without this, `Localize` falls
+# through to `LANG`/`LC_*` env vars which on minimal Linux CI runners can be
+# `POSIX` or `C` — values that don't validate as CLDR locales.
 config :localize, default_locale: :en
