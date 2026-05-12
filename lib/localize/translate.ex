@@ -7,12 +7,16 @@ defmodule Localize.Translate do
   requiring extra tables for translation storage and complex _joins_ when retrieving translations
   from the database.
 
-  `Localize.Translate` is split into two main components:
+  The runtime API lives on `Localize.Translate` itself:
 
-  * `Localize.Translate.Translator` - provides easy access to struct translations.
+  * `translate/2` returns a translated copy of an entire struct.
 
-  * `Localize.Translate.QueryBuilder` - provides helpers for querying translations using
-    `Ecto.Query` (requires `Ecto.SQL`).
+  * `translate/3` and `translate!/3` return a single translated field.
+
+  * `translatable?/2` reports whether a field is declared as translatable.
+
+  For `Ecto.Query` support, `Localize.Translate.QueryBuilder` provides the `translated/3`
+  and `translated_as/3` macros (requires `Ecto.SQL`).
 
   When used, `Localize.Translate` accepts the following options:
 
@@ -360,6 +364,240 @@ defmodule Localize.Translate do
     else
       raise "#{module} must use `Localize.Translate` in order to be translated"
     end
+  end
+
+  @doc """
+  Translates a whole struct into the given locale.
+
+  Returns the struct with every translatable field — and every translatable association or
+  embed — replaced by the value for the requested locale, falling back to the default
+  value when the locale has no entry.
+
+  ### Arguments
+
+  * `translatable` is a struct that uses `Localize.Translate`.
+
+  * `locale` is either a single locale or a list of locales acting as a fallback chain.
+    Each locale is an atom (such as `:en`) or a string (such as `"en"`).
+
+  ### Returns
+
+  * The translated struct. Unloaded associations (`%Ecto.Association.NotLoaded{}`) are
+    left untouched, so it is safe to call before `Repo.preload/2`.
+
+  ### Examples
+
+      # Translate the entire article into Spanish
+      Localize.Translate.translate(article, :es)
+
+      # Fallback chain — Deutsch missing, Spanish wins
+      Localize.Translate.translate(article, [:de, :es])
+
+  """
+  @spec translate(translatable(), locale_list()) :: translatable()
+  def translate(%{__struct__: module} = translatable, locale)
+      when is_atom(locale) or is_binary(locale) or is_list(locale) do
+    if Keyword.has_key?(module.__info__(:functions), :__trans__) do
+      default_locale = module.__trans__(:default_locale)
+
+      translatable
+      |> translate_fields(locale, default_locale)
+      |> translate_assocs(locale)
+    else
+      translatable
+    end
+  end
+
+  @doc """
+  Translates a single field into the given locale.
+
+  Looks up the field's translation in the given locale (or first match in a fallback
+  chain) and returns it. Returns the base value if no translation is available.
+
+  ### Arguments
+
+  * `translatable` is a struct that uses `Localize.Translate`.
+
+  * `field` is the name of the translatable field as an atom.
+
+  * `locale` is either a single locale or a list of locales acting as a fallback chain.
+
+  ### Returns
+
+  * The translated value, or the value from the base column when no translation exists
+    for any locale in the chain.
+
+  ### Examples
+
+      # Spanish title
+      Localize.Translate.translate(article, :title, :es)
+
+      # Unknown locale falls back to the base column
+      Localize.Translate.translate(article, :title, :de)
+
+      # Fallback chain
+      Localize.Translate.translate(article, :title, [:de, :es])
+
+  Raises if the field isn't declared as translatable:
+
+      Localize.Translate.translate(article, :fake_attr, :es)
+      ** (RuntimeError) 'Article' module must declare 'fake_attr' as translatable
+
+  """
+  @spec translate(translatable(), field(), locale_list()) :: any()
+  def translate(%{__struct__: module} = translatable, field, locale)
+      when is_atom(field) and (is_atom(locale) or is_binary(locale) or is_list(locale)) do
+    default_locale = module.__trans__(:default_locale)
+
+    unless translatable?(translatable, field) do
+      raise not_translatable_error(module, field)
+    end
+
+    case translate_field(translatable, locale, field, default_locale) do
+      :error -> Map.fetch!(translatable, field)
+      nil -> Map.fetch!(translatable, field)
+      translation -> translation
+    end
+  end
+
+  @doc """
+  Translates a single field into the given locale, raising if no translation is available.
+
+  Strict variant of `translate/3`. Where `translate/3` falls back to the base value when a
+  translation is missing, `translate!/3` raises so callers can distinguish "no
+  translation" from "translation equals the default".
+
+  ### Arguments
+
+  * `translatable` is a struct that uses `Localize.Translate`.
+
+  * `field` is the name of the translatable field as an atom.
+
+  * `locale` is either a single locale or a list of locales acting as a fallback chain.
+
+  ### Returns
+
+  * The translated value.
+
+  * Raises a `RuntimeError` if no translation exists for any locale in the chain.
+
+  ### Examples
+
+      Localize.Translate.translate!(article, :title, :de)
+      ** (RuntimeError) translation doesn't exist for field ':title' in locale :de
+
+  """
+  @spec translate!(translatable(), field(), locale_list()) :: any()
+  def translate!(%{__struct__: module} = translatable, field, locale)
+      when is_atom(field) and (is_atom(locale) or is_binary(locale) or is_list(locale)) do
+    default_locale = module.__trans__(:default_locale)
+
+    unless translatable?(translatable, field) do
+      raise not_translatable_error(module, field)
+    end
+
+    case translate_field(translatable, locale, field, default_locale) do
+      :error -> raise no_translation_error(field, locale)
+      translation -> translation
+    end
+  end
+
+  defp translate_field(%{__struct__: _module} = struct, locales, field, default_locale)
+       when is_list(locales) do
+    Enum.reduce_while(locales, :error, fn locale, translated_field ->
+      case translate_field(struct, locale, field, default_locale) do
+        :error -> {:cont, translated_field}
+        nil -> {:cont, translated_field}
+        translation -> {:halt, translation}
+      end
+    end)
+  end
+
+  defp translate_field(%{__struct__: _module} = struct, default_locale, field, default_locale) do
+    Map.fetch!(struct, field)
+  end
+
+  defp translate_field(%{__struct__: module} = struct, locale, field, _default_locale) do
+    with {:ok, all_translations} <- Map.fetch(struct, module.__trans__(:container)),
+         {:ok, translations_for_locale} <- get_translations_for_locale(all_translations, locale),
+         {:ok, translated_field} <- get_translated_field(translations_for_locale, field) do
+      translated_field || Map.fetch!(struct, field)
+    end
+  end
+
+  defp translate_fields(%{__struct__: module} = struct, locale, default_locale) do
+    fields = module.__trans__(:fields)
+
+    Enum.reduce(fields, struct, fn field, struct ->
+      case translate_field(struct, locale, field, default_locale) do
+        :error -> struct
+        nil -> struct
+        translation -> Map.put(struct, field, translation)
+      end
+    end)
+  end
+
+  defp translate_assocs(%{__struct__: module} = struct, locale) do
+    associations = module.__schema__(:associations)
+    embeds = module.__schema__(:embeds)
+
+    Enum.reduce(associations ++ embeds, struct, fn assoc_name, struct ->
+      Map.update(struct, assoc_name, nil, fn
+        %Ecto.Association.NotLoaded{} = item ->
+          item
+
+        items when is_list(items) ->
+          Enum.map(items, &translate(&1, locale))
+
+        %{} = item ->
+          translate(item, locale)
+
+        item ->
+          item
+      end)
+    end)
+  end
+
+  defp get_translations_for_locale(%{__struct__: _} = all_translations, locale)
+       when is_binary(locale) do
+    get_translations_for_locale(all_translations, String.to_existing_atom(locale))
+  end
+
+  defp get_translations_for_locale(%{__struct__: _} = all_translations, locale)
+       when is_atom(locale) do
+    Map.fetch(all_translations, locale)
+  end
+
+  defp get_translations_for_locale(all_translations, locale) do
+    Map.fetch(all_translations, to_string(locale))
+  end
+
+  defp get_translated_field(nil, _field), do: nil
+
+  defp get_translated_field(%{__struct__: _} = translations_for_locale, field)
+       when is_binary(field) do
+    get_translated_field(translations_for_locale, String.to_existing_atom(field))
+  end
+
+  defp get_translated_field(%{__struct__: _} = translations_for_locale, field)
+       when is_atom(field) do
+    Map.fetch(translations_for_locale, field)
+  end
+
+  defp get_translated_field(translations_for_locale, field) do
+    Map.fetch(translations_for_locale, to_string(field))
+  end
+
+  defp no_translation_error(field, locales) when is_list(locales) do
+    "translation doesn't exist for field '#{inspect(field)}' in locales #{inspect(locales)}"
+  end
+
+  defp no_translation_error(field, locale) do
+    "translation doesn't exist for field '#{inspect(field)}' in locale #{inspect(locale)}"
+  end
+
+  defp not_translatable_error(module, field) do
+    "'#{inspect(module)}' module must declare '#{inspect(field)}' as translatable"
   end
 
   @doc false

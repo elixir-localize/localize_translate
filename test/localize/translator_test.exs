@@ -1,7 +1,7 @@
-defmodule Localize.Translate.TranslatorTest do
+defmodule Localize.TranslatorTest do
   use Localize.Translate.TestCase
 
-  import Localize.Translate.Translator
+  import Localize.Translate, only: [translate: 2, translate: 3, translate!: 3]
 
   describe "with embedded schema translations" do
     setup do

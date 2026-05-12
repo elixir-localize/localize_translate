@@ -156,7 +156,7 @@ MyApp.Article.__trans__(:default_locale) #=> :en
 MyApp.Article.__trans__(:container)      #=> :translations
 ```
 
-These are used internally by `Translator` and `QueryBuilder`, but they're public — feel free to drive UI off them (e.g. iterate the locale list to render input fields).
+These are used internally by `translate/2,3` and `QueryBuilder`, but they're public — feel free to drive UI off them (e.g. iterate the locale list to render input fields).
 
 ## Step 4 — Insert and update translated content
 
@@ -190,29 +190,29 @@ For Phoenix forms, `<.inputs_for field={@form[:translations]}>` followed by anot
 
 ## Step 5 — Read translations at runtime
 
-`Localize.Translate.Translator` is the read side. It looks up a value in the JSON for the requested locale, falls back to the base column if the locale has no entry, and accepts an explicit fallback chain when you want graceful degradation.
+`Localize.Translate.translate/2,3` is the read side. It looks up a value in the JSON for the requested locale, falls back to the base column if the locale has no entry, and accepts an explicit fallback chain when you want graceful degradation.
 
 ```elixir
-alias Localize.Translate.Translator
+import Localize.Translate, only: [translate: 2, translate: 3, translate!: 3]
 
 # Single field
-Translator.translate(article, :title, :fr)
+translate(article, :title, :fr)
 #=> "Comment écrire un correcteur orthographique"
 
 # Missing locale falls back to the base column
-Translator.translate(article, :title, :de)
+translate(article, :title, :de)
 #=> "How to write a spell-checker"
 
 # Explicit fallback chain — try each in order
-Translator.translate(article, :title, [:de, :es, :en])
+translate(article, :title, [:de, :es, :en])
 #=> "Cómo escribir un corrector ortográfico"
 
 # Whole struct, fields replaced in-place
-Translator.translate(article, :fr).title
+translate(article, :fr).title
 #=> "Comment écrire un correcteur orthographique"
 
 # Strict variant — raise instead of falling back
-Translator.translate!(article, :title, :de)
+translate!(article, :title, :de)
 #=> ** (RuntimeError) translation doesn't exist for field ':title' in locale :de
 ```
 
@@ -238,7 +238,7 @@ defmodule MyAppWeb.Locale do
 end
 ```
 
-Then call `Translator.translate(article, :title, MyAppWeb.Locale.current())`.
+Then call `Localize.Translate.translate(article, :title, MyAppWeb.Locale.current())`.
 
 ## Step 6 — Query translated content
 
@@ -323,7 +323,7 @@ A few patterns to keep in mind as the schema grows.
 
 **Keep fields short.** The JSONB column is fetched in its entirety on every read of the row. A 5-locale article with three 500-byte fields adds ~7.5KB to the row — fine. A 5-locale article with 5MB of HTML per locale, not fine. For long-form body content, consider a `body_translations` *table* keyed by `(article_id, locale)` and continue to embed everything else.
 
-**Be deliberate about whether `nil` means missing or empty.** `Localize.Translate.Translator.translate/3` treats both as "fall back to the default value." If you need to distinguish "no Spanish translation yet" from "deliberately empty in Spanish," use `translate!/3` or a separate "translated locales" set.
+**Be deliberate about whether `nil` means missing or empty.** `Localize.Translate.translate/3` treats both as "fall back to the default value." If you need to distinguish "no Spanish translation yet" from "deliberately empty in Spanish," use `translate!/3` or a separate "translated locales" set.
 
 **Index translations only when you have to.** A `CREATE INDEX articles_es_title_idx ON articles ((translations->'es'->>'title'))` is a perfectly good way to make per-locale searches fast, but each index is per-locale — adding a locale means another migration. Trigram indexes (`pg_trgm`) over the same expression handle ILIKE-style queries efficiently.
 
@@ -350,7 +350,7 @@ end
 
 With a `:map` field instead of `embeds_one`, you skip the structured-schema generation entirely. The trade-off is that you give up changeset-driven validation per locale — the map accepts anything. This works well when translations come from a pipeline (a translation service, an import job) rather than a form.
 
-`Translator.translate/3` and `QueryBuilder.translated/3` work identically on both shapes — the only difference is what your changesets enforce.
+`Localize.Translate.translate/3` and `Localize.Translate.QueryBuilder.translated/3` work identically on both shapes — the only difference is what your changesets enforce.
 
 ## Step 9 — Forms and Phoenix LiveView
 
@@ -388,7 +388,7 @@ Three properties are worth dedicated tests:
 ```elixir
 test "missing locale falls back to base value" do
   article = insert!(%Article{title: "Hello", translations: %{}})
-  assert Translator.translate(article, :title, :de) == "Hello"
+  assert Localize.Translate.translate(article, :title, :de) == "Hello"
 end
 ```
 
@@ -447,7 +447,7 @@ It's not difficult, but it's not free. Worth planning for at design time — fav
 
 * The `Localize.Translate` moduledoc describes the `use` macro options in full.
 
-* `Localize.Translate.Translator` documents all read-side functions and their fallback semantics.
+* `Localize.Translate.translate/2`, `translate/3`, and `translate!/3` document the read-side functions and their fallback semantics.
 
 * `Localize.Translate.QueryBuilder` documents the query macros and the SQL they emit.
 

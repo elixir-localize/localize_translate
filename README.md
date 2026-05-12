@@ -24,7 +24,7 @@ Documentation can be found at [https://hexdocs.pm/localize_translate](https://he
 
 ## Optional Requirements
 
-Having Ecto SQL and Postgrex in your application will allow you to use the `Localize.Translate.QueryBuilder` component to generate database queries based on translated data. You can still use the `Localize.Translate.Translator` component without those dependencies though.
+Having Ecto SQL and Postgrex in your application will allow you to use the `Localize.Translate.QueryBuilder` component to generate database queries based on translated data. The runtime `Localize.Translate.translate/2,3` functions work without those dependencies.
 
 - [Ecto SQL](https://hex.pm/packages/ecto_sql) 3.0 or higher
 - [PostgreSQL](https://hex.pm/packages/postgrex) 9.4 or higher (since `Localize.Translate` leverages the JSONB datatype)
@@ -41,7 +41,7 @@ This approach has a few disadvantages:
 
 The approach used by `Localize.Translate` is based on modern RDBMSs support for unstructured datatypes. Instead of storing the translations in a different table, each translatable schema has an extra column that contains all of its translations. This approach drastically reduces the number of required JOINs when filtering or fetching records.
 
-`Localize.Translate` is lightweight and modularized. The `Localize.Translate` module provides metadata that is used by the `Localize.Translate.Translator` and `Localize.Translate.QueryBuilder` modules, which implement the main functionality of this library.
+`Localize.Translate` is lightweight and modularized. The `Localize.Translate` module provides the `use` macro for declaring translatable schemas, the runtime `translate/2,3` functions, and field reflection. `Localize.Translate.QueryBuilder` provides the `Ecto.Query` macros for filtering and selecting translated values in SQL.
 
 ## Quickstart
 
@@ -150,11 +150,14 @@ end
 
 ### Query Building
 
-After the schema is configured, use the `Localize.Translate.Translator` and `Localize.Translate.QueryBuilder` modules to fetch and query translations:
+After the schema is configured, use `Localize.Translate.translate/2,3` to fetch translations and `Localize.Translate.QueryBuilder` to query them:
 
 ```elixir
 # Translate a single field, with fallback chain
-Localize.Translate.Translator.translate(article, :title, [:de, :es])
+Localize.Translate.translate(article, :title, [:de, :es])
+
+# Translate the whole struct (and its embeds/associations) into Spanish
+Localize.Translate.translate(article, :es)
 
 # Filter on a translation in a query
 from a in Article,

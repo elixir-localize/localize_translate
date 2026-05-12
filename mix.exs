@@ -81,7 +81,6 @@ defmodule Localize.Translate.MixProject do
       files: [
         "lib",
         "guides",
-        "lib",
         "mix.exs",
         "README.md",
         "LICENSE.md",

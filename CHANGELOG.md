@@ -1,5 +1,5 @@
 # Changelog
 
-## Localize Translate v0.1.0
+## [v0.1.0] — 2026-05-13
 
-Initial release. Provides embedded translations for `Ecto.Schema` modules — translatable fields, configured locales, and default locale are declared via `use Localize.Translate`; `Localize.Translate.Translator` and `Localize.Translate.QueryBuilder` give runtime access and `Ecto.Query` helpers respectively.
+Initial release. Provides embedded translations for `Ecto.Schema` modules — `use Localize.Translate` declares translatable fields, locales, and default locale; `Localize.Translate.translate/2,3` reads translations at runtime, and `Localize.Translate.QueryBuilder.translated/3` builds matching `Ecto.Query` fragments.
