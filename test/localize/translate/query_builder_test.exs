@@ -423,4 +423,43 @@ defmodule Localize.Translate.QueryBuilderTest do
 
     assert Enum.any?(articles)
   end
+
+  describe "with LanguageTag and CLDR parent walking" do
+    test "translated/3 accepts a LanguageTag and walks the CLDR parent chain",
+         %{translated_article: translated_article} do
+      # Article has `:es` translations; `:"es-419"` walks parents to `:es`.
+      {:ok, tag} = Localize.LanguageTag.new("es-419")
+      es_title = translated_article.translations.es.title
+
+      [match] =
+        Repo.all(
+          from(
+            a in Article,
+            where: translated(Article, a.title, tag) == ^es_title
+          )
+        )
+
+      assert match.id == translated_article.id
+    end
+
+    test "translated/3 with a LanguageTag filters the chain to the schema's supported locales",
+         %{translated_article: translated_article} do
+      # `:"en-AU"` walks to `:"en-001"` → `:en`. Article doesn't declare `:"en-AU"`
+      # or `:"en-001"` so the chain reduces to `:en` (the default) and translated
+      # returns the base column.
+      {:ok, tag} = Localize.LanguageTag.new("en-AU")
+      id = translated_article.id
+
+      rows =
+        Repo.all(
+          from(
+            a in Article,
+            select: translated(Article, a.title, tag),
+            where: a.id == ^id
+          )
+        )
+
+      assert rows == [translated_article.title]
+    end
+  end
 end

@@ -174,6 +174,7 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
 
     defp translate_field(module, schema, nil, default_locale, locales) do
       table_alias = table_alias(schema)
+      supported = module.__trans__(:locales)
 
       funcall =
         "translate_field(#{table_alias}, ?::varchar, ?::varchar, ?::varchar[])"
@@ -183,13 +184,17 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
           unquote(funcall),
           ^to_string(unquote(module.__trans__(:container))),
           ^to_string(unquote(default_locale)),
-          ^Localize.Translate.QueryBuilder.list_to_sql_array(unquote(locales))
+          ^Localize.Translate.QueryBuilder.list_to_sql_array(
+            unquote(locales),
+            unquote(supported)
+          )
         )
       end
     end
 
     defp translate_field(module, schema, field, default_locale, locales) do
       table_alias = table_alias(schema)
+      supported = module.__trans__(:locales)
 
       funcall =
         "translate_field(#{table_alias}, ?::varchar, ?::varchar, ?::varchar, ?::varchar[])"
@@ -200,15 +205,18 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
           ^to_string(unquote(module.__trans__(:container))),
           ^to_string(unquote(field)),
           ^to_string(unquote(default_locale)),
-          ^Localize.Translate.QueryBuilder.list_to_sql_array(unquote(locales))
+          ^Localize.Translate.QueryBuilder.list_to_sql_array(
+            unquote(locales),
+            unquote(supported)
+          )
         )
       end
     end
 
     @doc false
-    def list_to_sql_array(locales) do
+    def list_to_sql_array(locales, supported \\ nil) do
       locales
-      |> List.wrap()
+      |> Localize.Translate.Locale.expand(supported)
       |> Enum.map(&to_string/1)
     end
 

@@ -1,7 +1,7 @@
 defmodule Localize.TranslatorTest do
   use Localize.Translate.TestCase
 
-  import Localize.Translate, only: [translate: 2, translate: 3, translate!: 3]
+  import Localize.Translate, only: [translate: 1, translate: 2, translate: 3, translate!: 3]
 
   describe "with embedded schema translations" do
     setup do
@@ -157,6 +157,68 @@ defmodule Localize.TranslatorTest do
 
       assert en_book.title == book.title
       assert en_book.body == book.body
+    end
+  end
+
+  describe "with LanguageTag and CLDR parent walking" do
+    setup do
+      [article: build(:article)]
+    end
+
+    test "translate/3 accepts a LanguageTag and walks parents",
+         %{article: article} do
+      # Article has translations for :es and :fr only. Article translates fields
+      # using LanguageTag for `:"en-AU"` should walk parents to find a match.
+      {:ok, tag} = Localize.LanguageTag.new("en-AU")
+      # No `en-AU`/`en-001`/`en` translation → falls back to the base value.
+      assert translate(article, :title, tag) == article.title
+    end
+
+    test "translate/3 falls back through parent locales",
+         %{article: article} do
+      # Build a tag for `:"es-419"` (Latin American Spanish). Its parent chain is
+      # `:"es-419"` → `:es-419` parents → `:es`. Article has `:es` translations
+      # so the chain should resolve.
+      {:ok, tag} = Localize.LanguageTag.new("es-419")
+      assert translate(article, :title, tag) == article.translations.es.title
+    end
+
+    test "translate/2 with a LanguageTag translates the whole struct via the chain",
+         %{article: article} do
+      {:ok, tag} = Localize.LanguageTag.new("es-419")
+      translated = translate(article, tag)
+      assert translated.title == article.translations.es.title
+      assert translated.body == article.translations.es.body
+    end
+
+    test "translate/1 uses Localize.get_locale/0 as default",
+         %{article: article} do
+      Localize.with_locale("fr", fn ->
+        translated = translate(article)
+        assert translated.title == article.translations.fr.title
+      end)
+    end
+
+    test "translate/2 with a field name uses current locale",
+         %{article: article} do
+      Localize.with_locale("es", fn ->
+        assert translate(article, :title) == article.translations.es.title
+      end)
+    end
+
+    test ":locales option accepts LanguageTag values, stored as cldr_locale_id" do
+      {:ok, tag} = Localize.LanguageTag.new("en-AU")
+      result = Localize.Translate.trans_locales(locales: [:en, tag, :fr])
+
+      assert :"en-AU" in result
+      assert :en in result
+      assert :fr in result
+    end
+
+    test ":locales list deduplicates after normalisation" do
+      {:ok, tag} = Localize.LanguageTag.new("en")
+      result = Localize.Translate.trans_locales(locales: [:en, tag, :en])
+      assert result == [:en]
     end
   end
 end

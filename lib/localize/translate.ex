@@ -9,14 +9,40 @@ defmodule Localize.Translate do
 
   The runtime API lives on `Localize.Translate` itself:
 
-  * `translate/2` returns a translated copy of an entire struct.
+  * `translate/1`, `translate/2` return a translated copy of an entire struct, or a single
+    field when the second argument is a field name.
 
-  * `translate/3` and `translate!/3` return a single translated field.
+  * `translate/3` and `translate!/3` return a single translated field with an explicit
+    locale or locale fallback chain.
 
   * `translatable?/2` reports whether a field is declared as translatable.
 
   For `Ecto.Query` support, `Localize.Translate.QueryBuilder` provides the `translated/3`
   and `translated_as/3` macros (requires `Ecto.SQL`).
+
+  ### Locale handling
+
+  `Localize.Translate` builds on [`:localize`](https://hex.pm/packages/localize) for
+  CLDR-aware locale handling. Three properties follow:
+
+  * **All locale inputs validate.** Atoms (`:en`), strings (`"en"`), and
+    `%Localize.LanguageTag{}` structs are accepted anywhere a locale is expected — in
+    `:locales`, `translate/N`, and `QueryBuilder.translated/3`. Each value is run
+    through `Localize.validate_locale/1` and unwrapped to its `:cldr_locale_id` atom.
+    Invalid locale names raise.
+
+  * **Fallbacks walk the CLDR parent chain.** A locale expands into a fallback chain
+    by walking parents (e.g. `:"en-AU"` → `:"en-001"` → `:en`, stopping before the
+    `:und` root). For `QueryBuilder`, the chain is filtered to the locales declared in
+    `:locales` so unsupported parents don't generate dead branches.
+
+  * **The current locale is `Localize.get_locale/0`.** `translate/1` and `translate/2`
+    (with a field name) default the locale from `Localize.get_locale/0` and walk its
+    parents.
+
+  Mixed `:locales` lists like `[:en, %Localize.LanguageTag{cldr_locale_id: :fr}]` are
+  supported. After validation each entry is reduced to an atom, deduplicated, and
+  sorted.
 
   When used, `Localize.Translate` accepts the following options:
 
@@ -367,23 +393,52 @@ defmodule Localize.Translate do
   end
 
   @doc """
-  Translates a whole struct into the given locale.
+  Translates a whole struct into the current locale.
 
-  Returns the struct with every translatable field — and every translatable association or
-  embed — replaced by the value for the requested locale, falling back to the default
-  value when the locale has no entry.
+  Equivalent to `translate(translatable, locale)` with `locale` resolved from
+  `Localize.get_locale/0` when the optional `:localize` dependency is loaded, falling back
+  to the schema's `:default_locale` otherwise.
 
   ### Arguments
 
   * `translatable` is a struct that uses `Localize.Translate`.
 
-  * `locale` is either a single locale or a list of locales acting as a fallback chain.
-    Each locale is an atom (such as `:en`) or a string (such as `"en"`).
+  ### Returns
+
+  * The translated struct.
+
+  """
+  @spec translate(translatable()) :: translatable()
+  def translate(translatable), do: translate(translatable, default_locale_for(translatable))
+
+  @doc """
+  Translates a whole struct (or a single field) into the given locale.
+
+  Returns the struct with every translatable field — and every translatable association or
+  embed — replaced by the value for the requested locale, falling back to the default
+  value when the locale has no entry. If the second argument is the name of a translatable
+  field, returns that single translated field using the current locale (see `translate/3`
+  for an explicit locale).
+
+  ### Arguments
+
+  * `translatable` is a struct that uses `Localize.Translate`.
+
+  * `locale_or_field` is one of:
+
+    * an atom or string locale (e.g. `:es`, `"fr"`),
+
+    * a list of locales acting as a fallback chain,
+
+    * a `%Localize.LanguageTag{}` — when the optional `:localize` dependency is loaded,
+      expanded into a fallback chain by walking the CLDR parent chain, or
+
+    * an atom field name — translates a single field using the current locale (see
+      `translate/3`).
 
   ### Returns
 
-  * The translated struct. Unloaded associations (`%Ecto.Association.NotLoaded{}`) are
-    left untouched, so it is safe to call before `Repo.preload/2`.
+  * The translated struct, or the translated value of a single field.
 
   ### Examples
 
@@ -394,9 +449,16 @@ defmodule Localize.Translate do
       Localize.Translate.translate(article, [:de, :es])
 
   """
-  @spec translate(translatable(), locale_list()) :: translatable()
-  def translate(%{__struct__: module} = translatable, locale)
-      when is_atom(locale) or is_binary(locale) or is_list(locale) do
+  @spec translate(translatable(), locale_list() | field() | struct()) ::
+          translatable() | any()
+  def translate(translatable, locale_or_field) do
+    case classify_locale_or_field(translatable, locale_or_field) do
+      {:field, field} -> translate(translatable, field, default_locale_for(translatable))
+      {:locale, chain} -> do_translate(translatable, chain)
+    end
+  end
+
+  defp do_translate(%{__struct__: module} = translatable, locale) do
     if Keyword.has_key?(module.__info__(:functions), :__trans__) do
       default_locale = module.__trans__(:default_locale)
 
@@ -444,16 +506,16 @@ defmodule Localize.Translate do
       ** (RuntimeError) 'Article' module must declare 'fake_attr' as translatable
 
   """
-  @spec translate(translatable(), field(), locale_list()) :: any()
-  def translate(%{__struct__: module} = translatable, field, locale)
-      when is_atom(field) and (is_atom(locale) or is_binary(locale) or is_list(locale)) do
+  @spec translate(translatable(), field(), locale_list() | struct()) :: any()
+  def translate(%{__struct__: module} = translatable, field, locale) when is_atom(field) do
+    chain = expand_locale(locale)
     default_locale = module.__trans__(:default_locale)
 
     unless translatable?(translatable, field) do
       raise not_translatable_error(module, field)
     end
 
-    case translate_field(translatable, locale, field, default_locale) do
+    case translate_field(translatable, chain, field, default_locale) do
       :error -> Map.fetch!(translatable, field)
       nil -> Map.fetch!(translatable, field)
       translation -> translation
@@ -487,20 +549,40 @@ defmodule Localize.Translate do
       ** (RuntimeError) translation doesn't exist for field ':title' in locale :de
 
   """
-  @spec translate!(translatable(), field(), locale_list()) :: any()
-  def translate!(%{__struct__: module} = translatable, field, locale)
-      when is_atom(field) and (is_atom(locale) or is_binary(locale) or is_list(locale)) do
+  @spec translate!(translatable(), field(), locale_list() | struct()) :: any()
+  def translate!(%{__struct__: module} = translatable, field, locale) when is_atom(field) do
+    chain = expand_locale(locale)
     default_locale = module.__trans__(:default_locale)
 
     unless translatable?(translatable, field) do
       raise not_translatable_error(module, field)
     end
 
-    case translate_field(translatable, locale, field, default_locale) do
+    case translate_field(translatable, chain, field, default_locale) do
       :error -> raise no_translation_error(field, locale)
       translation -> translation
     end
   end
+
+  defp classify_locale_or_field(%{__struct__: module}, value) do
+    cond do
+      is_atom(value) and not is_nil(value) and not is_boolean(value) and
+        Keyword.has_key?(module.__info__(:functions), :__trans__) and
+          value in module.__trans__(:fields) ->
+        {:field, value}
+
+      true ->
+        {:locale, expand_locale(value)}
+    end
+  end
+
+  defp expand_locale(locale), do: Localize.Translate.Locale.expand(locale)
+
+  # With `:localize` always present, `current/0` reliably returns a `LanguageTag`.
+  # `translate/N` then expands it through the CLDR parent chain, so a missing
+  # translation degrades through parents to the schema's `:default_locale` value
+  # in the base columns.
+  defp default_locale_for(_struct), do: Localize.Translate.Locale.current()
 
   defp translate_field(%{__struct__: _module} = struct, locales, field, default_locale)
        when is_list(locales) do
@@ -657,8 +739,14 @@ defmodule Localize.Translate do
   @doc false
   def trans_locales(options) do
     case Keyword.fetch(options, :locales) do
-      :error -> nil
-      {:ok, locales} -> Enum.sort(locales)
+      :error ->
+        nil
+
+      {:ok, locales} ->
+        locales
+        |> Enum.map(&Localize.Translate.Locale.normalise!/1)
+        |> Enum.uniq()
+        |> Enum.sort()
     end
   end
 

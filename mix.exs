@@ -23,7 +23,7 @@ defmodule Localize.Translate.MixProject do
       deps: deps(),
       docs: docs(),
       dialyzer: [
-        plt_add_apps: ~w(ecto ecto_sql inets mix)a
+        plt_add_apps: ~w(ecto ecto_sql inets localize mix)a
       ]
     ]
   end
@@ -54,6 +54,7 @@ defmodule Localize.Translate.MixProject do
   defp deps do
     [
       {:ecto, "~> 3.0"},
+      {:localize, "~> 0.32"},
 
       # Optional dependencies
       {:ecto_sql, "~> 3.0", optional: true},

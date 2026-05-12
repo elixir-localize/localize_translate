@@ -16,7 +16,7 @@ Documentation can be found at [https://hexdocs.pm/localize_translate](https://he
 
 ## Attribution
 
-`localize_translate` derives from [trans](https://github.com/crbelaus/trans) by [@crbelaus](https://github.com/crbelaus) and its CLDR-integrated fork [ex_cldr_trans](https://github.com/elixir-cldr/cldr_trans). This library is a standalone continuation within the `localize` ecosystem with no CLDR dependency.
+`localize_translate` derives from [trans](https://github.com/crbelaus/trans) by [@crbelaus](https://github.com/crbelaus) and its CLDR-integrated fork [ex_cldr_trans](https://github.com/elixir-cldr/cldr_trans). It is the continuation of that work within the `localize` ecosystem, built on [`:localize`](https://hex.pm/packages/localize) for CLDR-aware locale validation and parent-chain fallback.
 
 ### Introduction
 

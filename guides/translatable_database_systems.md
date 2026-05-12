@@ -443,6 +443,68 @@ It's not difficult, but it's not free. Worth planning for at design time — fav
 
 **Backup and replication.** No special handling needed. JSONB columns round-trip through `pg_dump` and logical replication unchanged.
 
+## Step 11 — Working with `LanguageTag` and parent fallbacks
+
+`Localize.Translate` builds on [`:localize`](https://hex.pm/packages/localize) for locale handling, so a few things come for free without any extra setup.
+
+**Locales validate.** Every locale you pass — in `:locales`, in `translate/N`, in `QueryBuilder.translated/3` — runs through `Localize.validate_locale/1`. Atoms, strings, and `%Localize.LanguageTag{}` structs converge to the same canonical `:cldr_locale_id` atom:
+
+```elixir
+{:ok, en_au} = Localize.LanguageTag.new("en-AU")
+
+use Localize.Translate,
+  translates: [:title, :body],
+  locales: [:en, "en-AU", en_au, :es, :fr],
+  default_locale: :en
+```
+
+After validation and dedup, `__trans__(:locales)` is `[:en, :"en-AU", :es, :fr]`. The bare atom, the string, and the `LanguageTag` for the same locale collapse to one entry.
+
+Typos raise at compile time:
+
+```elixir
+use Localize.Translate,
+  translates: [:title],
+  locales: [:en, :englsh],  # ** (Localize.InvalidLocaleError) "englsh" is not a valid locale
+  default_locale: :en
+```
+
+**Fallbacks walk parents.** Any locale you pass to `translate/N` expands into a CLDR parent chain:
+
+```elixir
+{:ok, tag} = Localize.LanguageTag.new("en-AU")
+
+# Tries :"en-AU", then :"en-001", then :en, falling back to the base column.
+Localize.Translate.translate(article, :title, tag)
+```
+
+This avoids needing to store an `en-AU` translation explicitly — the user's preferred regional locale degrades gracefully to the language-level one. The same walk happens for atom locales: `translate(article, :title, :"es-MX")` tries `:"es-MX"` → `:"es-419"` → `:es`.
+
+**`translate/1` and `translate/2` (with a field name) default to `Localize.get_locale/0`.**
+
+```elixir
+Localize.with_locale("fr-CA", fn ->
+  Localize.Translate.translate(article, :title)  # walks :fr-CA → :fr
+end)
+```
+
+**`QueryBuilder` does the same walk in SQL, filtered to supported locales.**
+
+```elixir
+import Localize.Translate.QueryBuilder
+
+{:ok, tag} = Localize.LanguageTag.new("es-419")
+
+from a in Article,
+  where: translated(Article, a.title, tag) == ^needle
+```
+
+The locale arg here is a runtime variable, so the macro generates a call to the `translate_field` SQL function. At call time, the tag is expanded to `[:"es-419", :es]`, filtered against the schema's declared `[:en, :es, :fr]`, and only `:es` reaches SQL — keeping the locale array passed to the database minimal.
+
+### Trade-off
+
+Strict validation catches typos but locks you out of free-form locale keys. If you want to key translations by something other than a CLDR locale identifier (e.g. `:legalese_en`), `Localize.Translate` is the wrong tool — store the data in a plain JSONB column instead.
+
 ## Where to next
 
 * The `Localize.Translate` moduledoc describes the `use` macro options in full.
