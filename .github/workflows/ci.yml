@@ -8,6 +8,10 @@ on:
 
 env:
   MIX_ENV: test
+  # Mirrors the convention used by elixir-localize/localize. Forces the default
+  # locale ahead of any other detection path so error-message formatting (which
+  # itself needs a locale) can never recurse.
+  LOCALIZE_DEFAULT_LOCALE: en
 
 permissions:
   contents: read
