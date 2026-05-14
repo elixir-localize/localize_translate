@@ -164,4 +164,4 @@ from a in Article,
   where: translated(Article, a.title, :fr) == "Elixir"
 ```
 
-Locales are atoms (or strings) — there is no built-in locale registry. Callers pass explicit locales or fallback chains as plain lists.
+Locales are validated via `Localize.validate_locale/1`, so atoms (`:en`), strings (`"en"`), and `Localize.LanguageTag` structs are all accepted. Fallback chains follow CLDR parent locales automatically — for example, `Localize.Translate.translate(article, :title, Localize.LanguageTag.new!("en-AU"))` walks `:"en-AU"` → `:"en-001"` → `:en`.
