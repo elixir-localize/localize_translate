@@ -45,6 +45,11 @@ defmodule Localize.Translate.OptionsTest do
       assert Translate.trans_store([]) == Embedded
     end
 
+    test "accepts a {store, options} tuple and reports the module" do
+      assert Translate.trans_store(store: {Localize.Translate.Store.SiblingResource, repo: Foo}) ==
+               Localize.Translate.Store.SiblingResource
+    end
+
     test "returns an explicit store" do
       defmodule CustomStore do
         @moduledoc false
@@ -61,6 +66,25 @@ defmodule Localize.Translate.OptionsTest do
       end
 
       assert Translate.trans_store(store: CustomStore) == CustomStore
+    end
+  end
+
+  describe "trans_store_options/1" do
+    test "defaults to an empty list when the store is given as a bare module" do
+      assert Translate.trans_store_options(store: Embedded) == []
+    end
+
+    test "returns an empty list when no store is declared" do
+      assert Translate.trans_store_options([]) == []
+    end
+
+    test "returns the options from a {store, options} tuple" do
+      options = [repo: Foo, schema: Bar]
+
+      assert Translate.trans_store_options(
+               store: {Localize.Translate.Store.SiblingResource, options}
+             ) ==
+               options
     end
   end
 

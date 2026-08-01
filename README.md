@@ -41,6 +41,14 @@ This approach has a few disadvantages:
 
 The approach used by `Localize.Translate` is based on modern RDBMSs support for unstructured datatypes. Instead of storing the translations in a different table, each translatable schema has an extra column that contains all of its translations. This approach drastically reduces the number of required JOINs when filtering or fetching records.
 
+## Storage backends
+
+Translations are read through a store, declared per schema. `Localize.Translate.Store.Embedded` is the default and needs no configuration — it keeps translations in a container field on the schema, which is the model described above.
+
+`Localize.Translate.Store.SiblingResource` keeps them in a sibling table instead, one row per `(subject, locale)`. That is the model this package exists to avoid, so reach for it only when you need something the embedded model cannot express: per-translation workflow state, per-locale permissions, row-level translation history, or concurrent editing across locales without contending on one column.
+
+Both implement `Localize.Translate.Store`, so `translate/2,3` behaves identically either way, and a custom store — ETS, a file, a translation service — only has to implement that behaviour.
+
 `Localize.Translate` is lightweight and modularized. The `Localize.Translate` module provides the `use` macro for declaring translatable schemas, the runtime `translate/2,3` functions, and field reflection. `Localize.Translate.QueryBuilder` provides the `Ecto.Query` macros for filtering and selecting translated values in SQL.
 
 ## Quickstart

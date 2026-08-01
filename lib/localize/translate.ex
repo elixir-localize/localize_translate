@@ -161,7 +161,8 @@ defmodule Localize.Translate do
           trans_container: 1,
           trans_locales: 1,
           trans_default_locale: 1,
-          trans_store: 1
+          trans_store: 1,
+          trans_store_options: 1
         ]
 
       Module.put_attribute(__MODULE__, :trans_fields, trans_fields(unquote(opts)))
@@ -169,6 +170,7 @@ defmodule Localize.Translate do
       Module.put_attribute(__MODULE__, :trans_locales, trans_locales(unquote(opts)))
       Module.put_attribute(__MODULE__, :trans_default_locale, trans_default_locale(unquote(opts)))
       Module.put_attribute(__MODULE__, :trans_store, trans_store(unquote(opts)))
+      Module.put_attribute(__MODULE__, :trans_store_options, trans_store_options(unquote(opts)))
 
       @after_compile {Localize.Translate, :__validate_translatable_fields__}
       @after_compile {Localize.Translate, :__validate_translation_container__}
@@ -187,6 +189,9 @@ defmodule Localize.Translate do
 
       @spec __trans__(:store) :: module()
       def __trans__(:store), do: @trans_store
+
+      @spec __trans__(:store_options) :: keyword()
+      def __trans__(:store_options), do: @trans_store_options
     end
   end
 
@@ -471,6 +476,7 @@ defmodule Localize.Translate do
   defp do_translate(%{__struct__: module} = translatable, locale) do
     if Keyword.has_key?(module.__info__(:functions), :__trans__) do
       default_locale = module.__trans__(:default_locale)
+      translatable = load_translations(translatable)
 
       translatable
       |> translate_fields(locale, default_locale)
@@ -524,6 +530,8 @@ defmodule Localize.Translate do
     unless translatable?(translatable, field) do
       raise not_translatable_error(module, field)
     end
+
+    translatable = load_translations(translatable)
 
     case translate_field(translatable, chain, field, default_locale) do
       :error -> Map.fetch!(translatable, field)
@@ -596,6 +604,27 @@ defmodule Localize.Translate do
   # in the base columns.
   defp default_locale_for(_struct), do: Localize.Translate.Locale.current()
 
+  # A store whose translations do not travel with the subject populates the
+  # container in one call here, so resolution below costs no further I/O. Stores
+  # that do not implement the callback — the embedded one — are left alone. A
+  # load failure degrades to the unloaded subject and its base values rather
+  # than propagating, because `translate/2,3` return values, not tuples.
+  defp load_translations(%{__struct__: module} = struct) do
+    store = module.__trans__(:store)
+
+    # `Code.ensure_loaded?/1` first: `function_exported?/3` answers false for a
+    # module that is compiled but not yet loaded, which would silently skip the
+    # load on the first call after boot and return untranslated base values.
+    if Code.ensure_loaded?(store) and function_exported?(store, :load_translations, 2) do
+      case store.load_translations(struct, module.__trans__(:store_options)) do
+        {:ok, loaded} -> loaded
+        {:error, _reason} -> struct
+      end
+    else
+      struct
+    end
+  end
+
   defp translate_field(%{__struct__: _module} = struct, locales, field, default_locale)
        when is_list(locales) do
     Enum.reduce_while(locales, :error, fn locale, translated_field ->
@@ -612,7 +641,9 @@ defmodule Localize.Translate do
   end
 
   defp translate_field(%{__struct__: module} = struct, locale, field, _default_locale) do
-    case module.__trans__(:store).fetch_translation(struct, locale, field, []) do
+    store = module.__trans__(:store)
+
+    case store.fetch_translation(struct, locale, field, module.__trans__(:store_options)) do
       {:ok, nil} -> Map.fetch!(struct, field)
       {:ok, translated_field} -> translated_field
       :error -> :error
@@ -716,7 +747,16 @@ defmodule Localize.Translate do
   def trans_store(options) do
     case Keyword.fetch(options, :store) do
       :error -> Localize.Translate.Store.Embedded
+      {:ok, {store, _store_options}} -> store
       {:ok, store} -> store
+    end
+  end
+
+  @doc false
+  def trans_store_options(options) do
+    case Keyword.fetch(options, :store) do
+      {:ok, {_store, store_options}} -> store_options
+      _other -> []
     end
   end
 

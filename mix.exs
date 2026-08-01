@@ -32,7 +32,7 @@ defmodule Localize.Translate.MixProject do
           Localize.Translate.Factory,
           Localize.Translate.Repo,
           Localize.Translate.TestCase,
-          ~r/^Localize\.Translate\.(Article|Book|Brochure|Comment|Leaflet|Magazine|Pamphlet)(\.|$)/
+          ~r/^Localize\.Translate\.(Article|Book|Brochure|Comment|Leaflet|Magazine|Page|PageTranslation|Pamphlet)(\.|$)/
         ]
       ],
       app_list: app_list(Mix.env()),

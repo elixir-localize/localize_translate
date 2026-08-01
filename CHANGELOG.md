@@ -2,6 +2,16 @@
 
 ## [v1.0.0] — 2026-08-01
 
+### Added
+
+* `Localize.Translate.Store` — a behaviour for translation storage, so translations need not live on the subject. It is subject-and-field shaped: a store receives the whole subject rather than an extracted key, so a CLDR fallback chain resolves in one pass.
+
+* `Localize.Translate.Store.Embedded` — the default store, implementing the container-map storage this library has always used. Existing schemas keep working unchanged.
+
+* `Localize.Translate.Store.SiblingResource` — a store keeping translations in a sibling table, one row per `(subject, locale)`. For per-translation workflow state, per-locale permissions, row-level translation history, or concurrent editing across locales.
+
+* A schema selects its store with `use Localize.Translate, store: MyStore` or `store: {MyStore, options}`.
+
 ### Changed
 
 * Requires `localize ~> 1.0`. The previous requirement of `~> 0.32` excluded it.

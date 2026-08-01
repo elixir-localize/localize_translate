@@ -134,6 +134,39 @@ defmodule Localize.Translate.Store do
               {:ok, subject()} | {:error, term()}
 
   @doc """
+  Loads a subject's translations so they can be resolved without further I/O.
+
+  Optional. A store whose translations already travel with the subject — the
+  embedded store — does not implement it, and `Localize.Translate` skips the
+  call.
+
+  A store that keeps translations elsewhere implements it to fetch them in one
+  go and populate the subject's container field. Resolution then reads from the
+  loaded subject, so a fallback chain across several fields costs one query
+  rather than one per field per candidate locale.
+
+  `Localize.Translate` calls this once at the start of `translate/2,3`, so a
+  store need not make `c:fetch_translation/4` self-sufficient.
+
+  ### Arguments
+
+  * `subject` is the struct whose translations should be loaded.
+
+  * `options` is a keyword list of store-specific options, as declared by the
+    schema's `:store` option.
+
+  ### Returns
+
+  * `{:ok, subject}` with the subject's container populated.
+
+  * `{:error, reason}` if loading failed, in which case resolution proceeds
+    against the unloaded subject and falls back to base values.
+
+  """
+  @callback load_translations(subject(), options :: keyword()) ::
+              {:ok, subject()} | {:error, term()}
+
+  @doc """
   Lists the locales for which the subject holds translations.
 
   ### Arguments
@@ -162,5 +195,5 @@ defmodule Localize.Translate.Store do
   """
   @callback queryable?() :: boolean()
 
-  @optional_callbacks put_translation: 5
+  @optional_callbacks put_translation: 5, load_translations: 2
 end
