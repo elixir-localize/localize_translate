@@ -48,6 +48,11 @@ defmodule Localize.Translate.GenFunctionMigrationTest do
 
   describe "task metadata" do
     test "is registered as a mix task with a short description" do
+      # `function_exported?/3` answers false for a module that is merely
+      # compiled but not yet loaded, so load it first — otherwise this passes
+      # or fails depending on test order.
+      Code.ensure_loaded!(TranslateFunction)
+
       assert function_exported?(TranslateFunction, :run, 1)
       assert Mix.Task.shortdoc(TranslateFunction) =~ "translate_field"
     end
