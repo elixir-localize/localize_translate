@@ -1,11 +1,14 @@
 import Config
 
+# Connection settings come from the standard PG* environment variables so the
+# same config works on CI (where the service container sets PGUSER=postgres)
+# and on a developer machine (where the role is usually the login user).
 config :localize_translate, Localize.Translate.Repo,
-  username: "postgres",
-  password: "postgres",
-  hostname: "localhost",
-  database: "postgres",
-  port: 5432,
+  hostname: System.get_env("PGHOST", "localhost"),
+  port: String.to_integer(System.get_env("PGPORT", "5432")),
+  username: System.get_env("PGUSER", System.get_env("USER")),
+  password: System.get_env("PGPASSWORD"),
+  database: System.get_env("PGDATABASE", "localize_translate_test"),
   pool: Ecto.Adapters.SQL.Sandbox,
   log: false
 

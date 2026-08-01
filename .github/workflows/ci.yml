@@ -8,6 +8,10 @@ on:
 
 env:
   MIX_ENV: test
+  PGHOST: localhost
+  PGUSER: postgres
+  PGPASSWORD: postgres
+  LOCALIZE_DEFAULT_LOCALE: en
 
 permissions:
   contents: read
@@ -20,11 +24,12 @@ jobs:
     # Postgres is required for the QueryBuilder tests, which exercise the
     # generated `translate_field` function and JSONB column behaviour.
     services:
-      db:
-        image: postgres:16
-        ports: ["5432:5432"]
+      postgres:
+        image: postgres:17
         env:
           POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -55,11 +60,13 @@ jobs:
           - elixir: "1.19-otp-28"
             otp: "28"
 
-          # Elixir 1.20 — supports OTP 27–28
-          - elixir: "1.20.0-rc.4-otp-27"
+          # Elixir 1.20 — supports OTP 27–29
+          - elixir: "1.20.2-otp-27"
             otp: "27"
-          - elixir: "1.20.0-rc.4-otp-28"
+          - elixir: "1.20.2-otp-28"
             otp: "28"
+          - elixir: "1.20.2-otp-29"
+            otp: "29"
             lint: true
 
     steps:
@@ -89,11 +96,26 @@ jobs:
         if: matrix.lint
         run: mix format --check-formatted
 
+      - name: Run credo
+        if: matrix.lint
+        run: mix credo --strict
+
       - name: Compile (warnings as errors)
         run: mix compile --warnings-as-errors
 
       - name: Run tests
+        if: ${{ !matrix.lint }}
         run: mix test
+
+      - name: Run tests with coverage
+        if: matrix.lint
+        run: mix test --cover
+
+      - name: Build docs (warnings as errors)
+        if: matrix.lint
+        env:
+          MIX_ENV: release
+        run: mix docs --warnings-as-errors
 
       - name: Restore PLT cache
         if: matrix.lint

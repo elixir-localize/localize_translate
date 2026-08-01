@@ -2,7 +2,7 @@ defmodule Localize.Translate.MixProject do
   use Mix.Project
 
   @name "Localize Translate"
-  @version "0.1.0"
+  @version "1.0.0"
   @source_url "https://github.com/elixir-localize/localize_translate"
 
   def project do
@@ -23,7 +23,14 @@ defmodule Localize.Translate.MixProject do
       deps: deps(),
       docs: docs(),
       dialyzer: [
-        plt_add_apps: ~w(ecto ecto_sql inets localize mix)a
+        plt_add_apps: ~w(ecto ecto_sql inets localize mix)a,
+        flags: [
+          :error_handling,
+          :unknown,
+          :underspecs,
+          :extra_return,
+          :missing_return
+        ]
       ]
     ]
   end
@@ -54,7 +61,7 @@ defmodule Localize.Translate.MixProject do
   defp deps do
     [
       {:ecto, "~> 3.0"},
-      {:localize, "~> 0.32"},
+      {:localize, "~> 1.0"},
 
       # Optional dependencies
       {:ecto_sql, "~> 3.0", optional: true},
@@ -62,6 +69,7 @@ defmodule Localize.Translate.MixProject do
 
       # Doc dependencies
       {:ex_doc, ">= 0.0.0", only: [:dev, :release], runtime: false},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.0", only: [:dev, :test], runtime: false, optional: true}
     ] ++ maybe_json_polyfill()
   end
@@ -115,6 +123,7 @@ defmodule Localize.Translate.MixProject do
   defp aliases do
     [
       test: [
+        "ecto.create --quiet",
         "ecto.migrate --quiet",
         "test"
       ]

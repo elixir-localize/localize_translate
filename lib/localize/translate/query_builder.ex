@@ -229,9 +229,7 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
     end
 
     defp fragment_placeholders(enum) do
-      enum
-      |> Enum.map(fn _x -> "?" end)
-      |> Enum.join(",")
+      Enum.map_join(enum, ",", fn _x -> "?" end)
     end
 
     # Heuristic to guess the Ecto table alias name based upon

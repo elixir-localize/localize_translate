@@ -7,7 +7,7 @@ The package can be installed by adding `localize_translate` to your list of depe
 ```elixir
 def deps do
   [
-    {:localize_translate, "~> 0.1"}
+    {:localize_translate, "~> 1.0"}
   ]
 end
 ```

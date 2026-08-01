@@ -51,14 +51,17 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
     defp pad(i) when i < 10, do: <<?0, ?0 + i>>
     defp pad(i), do: to_string(i)
 
+    # `Code.format_string!/1` returns iodata; flatten it so both branches share
+    # one contract and callers get a plain binary.
     if Code.ensure_loaded?(Code) && function_exported?(Code, :format_string!, 1) do
-      @spec format_string!(String.t()) :: iodata()
-      @dialyzer {:no_return, format_string!: 1}
+      @spec format_string!(String.t()) :: String.t()
       def format_string!(string) do
-        Code.format_string!(string)
+        string
+        |> Code.format_string!()
+        |> IO.iodata_to_binary()
       end
     else
-      @spec format_string!(String.t()) :: iodata()
+      @spec format_string!(String.t()) :: String.t()
       def format_string!(string) do
         string
       end
@@ -67,12 +70,18 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
     if Code.ensure_loaded?(Ecto.Migrator) &&
          function_exported?(Ecto.Migrator, :migrations_path, 1) do
       def migrations_path(repo) do
+        # Guarded above by function_exported?/3: on Ecto versions where this
+        # lives on Mix.Ecto instead, a direct call would not compile.
+        # credo:disable-for-next-line Credo.Check.Refactor.Apply
         apply(Ecto.Migrator, :migrations_path, [repo])
       end
     end
 
     if Code.ensure_loaded?(Mix.Ecto) && function_exported?(Mix.Ecto, :migrations_path, 1) do
       def migrations_path(repo) do
+        # See the note above: the Ecto.Migrator branch is preferred, this is
+        # the fallback for older Ecto where the function lives on Mix.Ecto.
+        # credo:disable-for-next-line Credo.Check.Refactor.Apply
         apply(Mix.Ecto, :migrations_path, [repo])
       end
     end

@@ -565,15 +565,17 @@ defmodule Localize.Translate do
   end
 
   defp classify_locale_or_field(%{__struct__: module}, value) do
-    cond do
-      is_atom(value) and not is_nil(value) and not is_boolean(value) and
-        Keyword.has_key?(module.__info__(:functions), :__trans__) and
-          value in module.__trans__(:fields) ->
-        {:field, value}
-
-      true ->
-        {:locale, expand_locale(value)}
+    if translatable_field?(module, value) do
+      {:field, value}
+    else
+      {:locale, expand_locale(value)}
     end
+  end
+
+  defp translatable_field?(module, value) do
+    is_atom(value) and not is_nil(value) and not is_boolean(value) and
+      Keyword.has_key?(module.__info__(:functions), :__trans__) and
+      value in module.__trans__(:fields)
   end
 
   defp expand_locale(locale), do: Localize.Translate.Locale.expand(locale)
