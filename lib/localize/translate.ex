@@ -156,12 +156,19 @@ defmodule Localize.Translate do
   defmacro using(opts) do
     quote do
       import Localize.Translate,
-        only: [trans_fields: 1, trans_container: 1, trans_locales: 1, trans_default_locale: 1]
+        only: [
+          trans_fields: 1,
+          trans_container: 1,
+          trans_locales: 1,
+          trans_default_locale: 1,
+          trans_store: 1
+        ]
 
       Module.put_attribute(__MODULE__, :trans_fields, trans_fields(unquote(opts)))
       Module.put_attribute(__MODULE__, :trans_container, trans_container(unquote(opts)))
       Module.put_attribute(__MODULE__, :trans_locales, trans_locales(unquote(opts)))
       Module.put_attribute(__MODULE__, :trans_default_locale, trans_default_locale(unquote(opts)))
+      Module.put_attribute(__MODULE__, :trans_store, trans_store(unquote(opts)))
 
       @after_compile {Localize.Translate, :__validate_translatable_fields__}
       @after_compile {Localize.Translate, :__validate_translation_container__}
@@ -177,6 +184,9 @@ defmodule Localize.Translate do
 
       @spec __trans__(:default_locale) :: atom() | nil
       def __trans__(:default_locale), do: @trans_default_locale
+
+      @spec __trans__(:store) :: module()
+      def __trans__(:store), do: @trans_store
     end
   end
 
@@ -602,10 +612,10 @@ defmodule Localize.Translate do
   end
 
   defp translate_field(%{__struct__: module} = struct, locale, field, _default_locale) do
-    with {:ok, all_translations} <- Map.fetch(struct, module.__trans__(:container)),
-         {:ok, translations_for_locale} <- get_translations_for_locale(all_translations, locale),
-         {:ok, translated_field} <- get_translated_field(translations_for_locale, field) do
-      translated_field || Map.fetch!(struct, field)
+    case module.__trans__(:store).fetch_translation(struct, locale, field, []) do
+      {:ok, nil} -> Map.fetch!(struct, field)
+      {:ok, translated_field} -> translated_field
+      :error -> :error
     end
   end
 
@@ -642,36 +652,6 @@ defmodule Localize.Translate do
     end)
   end
 
-  defp get_translations_for_locale(%{__struct__: _} = all_translations, locale)
-       when is_binary(locale) do
-    get_translations_for_locale(all_translations, String.to_existing_atom(locale))
-  end
-
-  defp get_translations_for_locale(%{__struct__: _} = all_translations, locale)
-       when is_atom(locale) do
-    Map.fetch(all_translations, locale)
-  end
-
-  defp get_translations_for_locale(all_translations, locale) do
-    Map.fetch(all_translations, to_string(locale))
-  end
-
-  defp get_translated_field(nil, _field), do: nil
-
-  defp get_translated_field(%{__struct__: _} = translations_for_locale, field)
-       when is_binary(field) do
-    get_translated_field(translations_for_locale, String.to_existing_atom(field))
-  end
-
-  defp get_translated_field(%{__struct__: _} = translations_for_locale, field)
-       when is_atom(field) do
-    Map.fetch(translations_for_locale, field)
-  end
-
-  defp get_translated_field(translations_for_locale, field) do
-    Map.fetch(translations_for_locale, to_string(field))
-  end
-
   defp no_translation_error(field, locales) when is_list(locales) do
     "translation doesn't exist for field '#{inspect(field)}' in locales #{inspect(locales)}"
   end
@@ -694,15 +674,17 @@ defmodule Localize.Translate do
       [] ->
         nil
 
-      [_] ->
+      [field] ->
         raise ArgumentError,
           message:
-            "#{module} declares '#{invalid_fields}' as translatable but it is not defined in the module's struct"
+            "#{inspect(module)} declares '#{inspect(field)}' as translatable " <>
+              "but it is not defined in the module's struct"
 
-      _ ->
+      fields ->
         raise ArgumentError,
           message:
-            "#{module} declares '#{invalid_fields}' as translatable but they are not defined in the module's struct"
+            "#{inspect(module)} declares #{inspect(fields)} as translatable " <>
+              "but they are not defined in the module's struct"
     end
   end
 
@@ -727,6 +709,14 @@ defmodule Localize.Translate do
         raise ArgumentError,
           message:
             "Localize.Translate requires a 'translates' option that contains the list of translatable field names"
+    end
+  end
+
+  @doc false
+  def trans_store(options) do
+    case Keyword.fetch(options, :store) do
+      :error -> Localize.Translate.Store.Embedded
+      {:ok, store} -> store
     end
   end
 

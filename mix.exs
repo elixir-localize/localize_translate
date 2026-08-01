@@ -18,6 +18,23 @@ defmodule Localize.Translate.MixProject do
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       elixirc_paths: elixirc_paths(Mix.env()),
+      test_coverage: [
+        # `test/support` is compiled into the test build, so its fixture
+        # schemas, factory and repo are counted as covered code. They are
+        # test scaffolding, not library surface — exclude them and the
+        # submodules the `use Localize.Translate` macro generates for them.
+        ignore_modules: [
+          # A hand-invoked code generator: `run/1` writes a migration file into
+          # the host project, so exercising it in the suite would mean
+          # generating and cleaning up files on every run. Its pure helpers are
+          # tested directly in gen_function_migration_test.exs.
+          Mix.Tasks.Localize.Translate.Gen.TranslateFunction,
+          Localize.Translate.Factory,
+          Localize.Translate.Repo,
+          Localize.Translate.TestCase,
+          ~r/^Localize\.Translate\.(Article|Book|Brochure|Comment|Leaflet|Magazine|Pamphlet)(\.|$)/
+        ]
+      ],
       app_list: app_list(Mix.env()),
       package: package(),
       deps: deps(),
