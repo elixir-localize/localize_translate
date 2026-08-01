@@ -1,6 +1,8 @@
 # Changelog
 
-## [v1.0.0] — 2026-08-01
+## [v0.2.0] — 2026-08-01
+
+The store behaviour is new public API and its first consumer — the Ash integration — has not yet written an adapter against it. The package stays on a 0.x line until that shape is agreed, so it can change without a major bump.
 
 ### Added
 

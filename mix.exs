@@ -2,7 +2,7 @@ defmodule Localize.Translate.MixProject do
   use Mix.Project
 
   @name "Localize Translate"
-  @version "1.0.0"
+  @version "0.2.0"
   @source_url "https://github.com/elixir-localize/localize_translate"
 
   def project do
