@@ -52,7 +52,7 @@ defmodule Localize.Translate.Store.SiblingResourceTest do
       assert Translate.translate(page, :title, :es) == "Título"
     end
 
-    test "falls back to the base value for a locale with no row", %{page: page} do
+    test "falls back to the base value for a locale with no row" do
       page = Repo.insert!(%Page{title: "Only English"})
 
       assert Translate.translate(page, :title, :es) == "Only English"

@@ -231,8 +231,12 @@ defmodule Localize.Translate do
 
   ### Options
 
-  * `:build_field_schema` - when `true` (the default), generates the inner
-    `Translations.Fields` module. Set to `false` if you want to define that module yourself.
+  * `:build_field_schema` — when `true` (the default), generates both the translation
+    schema (`Translations`, or the `translation_module` given) and its inner `Fields`
+    schema. When `false`, neither is generated: the container field still embeds the
+    translation schema, so define it yourself with one `embeds_one` per non-default locale,
+    pointing at a `Fields` schema of your own, which may carry extra fields such as an
+    update timestamp.
 
   ### Examples
 
