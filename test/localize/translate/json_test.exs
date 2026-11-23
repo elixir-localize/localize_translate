@@ -56,6 +56,37 @@ defmodule Localize.Translate.JSONTest do
     end
   end
 
+  describe "dates, times and decimals" do
+    # ISO 8601 text is what Ecto reads back into an embedded schema's
+    # :date, :time, :naive_datetime, :utc_datetime and :decimal fields.
+    test "encode as ISO 8601 strings and decimal text" do
+      assert JSON.encode!(~D[2026-11-23]) == ~s("2026-11-23")
+      assert JSON.encode!(~T[10:00:00]) == ~s("10:00:00")
+      assert JSON.encode!(~N[2026-11-23 10:00:00]) == ~s("2026-11-23T10:00:00")
+      assert JSON.encode!(~U[2026-11-23 10:00:00Z]) == ~s("2026-11-23T10:00:00Z")
+      assert JSON.encode!(~U[2026-11-23 10:00:00.123456Z]) == ~s("2026-11-23T10:00:00.123456Z")
+      assert JSON.encode!(Decimal.new("12.50")) == ~s("12.50")
+    end
+
+    test "encode inside a map and a list" do
+      assert JSON.encode!(%{"at" => ~U[2026-11-23 10:00:00Z], "on" => [~D[2026-11-23]]})
+             |> JSON.decode!() == %{"at" => "2026-11-23T10:00:00Z", "on" => ["2026-11-23"]}
+    end
+
+    test "Ecto casts the encoded text back to the value" do
+      for {type, value} <- [
+            date: ~D[2026-11-23],
+            time: ~T[10:00:00],
+            naive_datetime: ~N[2026-11-23 10:00:00],
+            utc_datetime: ~U[2026-11-23 10:00:00Z],
+            decimal: Decimal.new("12.50")
+          ] do
+        text = value |> JSON.encode!() |> JSON.decode!()
+        assert Ecto.Type.cast(type, text) == {:ok, value}
+      end
+    end
+  end
+
   describe "decode!/1" do
     test "decodes a binary" do
       assert JSON.decode!(~s({"title":"Título"})) == %{"title" => "Título"}

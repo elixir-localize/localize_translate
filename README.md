@@ -156,6 +156,45 @@ That may not be flexible enough for all requirements. A custom changeset can be 
 end
 ```
 
+### Per-locale state
+
+To keep state beside each locale's translations — who translated it, when, whether it was machine-translated — give `translations` a per-locale schema of your own with `:fields_module`. The `Translations` schema is still generated, and each locale embeds your schema instead of the generated `Fields`.
+
+```elixir
+defmodule MyApp.Article.TranslationFields do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key false
+  embedded_schema do
+    field :title, :string
+    field :body, :string
+    field :translated_by, :string
+    field :machine_translated, :boolean, default: false
+    field :translated_at, :utc_datetime
+  end
+
+  def changeset(fields, params) do
+    fields
+    |> cast(params, [:title, :body, :translated_by, :machine_translated, :translated_at])
+    |> validate_required([:title])
+  end
+end
+
+defmodule MyApp.Article do
+  use Ecto.Schema
+  use Localize.Translate, translates: [:title, :body], locales: [:en, :es, :fr], default_locale: :en
+
+  schema "articles" do
+    field :title, :string
+    field :body, :string
+    translations :translations, Translations, fields_module: MyApp.Article.TranslationFields
+  end
+end
+```
+
+The schema must define every field in `:translates` as a `:string`, which is checked when `MyApp.Article` compiles, and it must be defined before `MyApp.Article`, not nested inside it. `Localize.Translate.translate/3` and the query builder read only the translatable fields. A query on a whole locale, `translated(Article, a, :es)`, reads the locale's whole object, so a locale that holds only state is not `NULL`.
+
 ### Query Building
 
 After the schema is configured, use `Localize.Translate.translate/2,3` to fetch translations and `Localize.Translate.QueryBuilder` to query them:

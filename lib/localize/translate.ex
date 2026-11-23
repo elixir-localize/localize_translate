@@ -209,6 +209,11 @@ defmodule Localize.Translate do
     [build_field_schema: true]
   end
 
+  @doc false
+  def known_trans_options do
+    [:build_field_schema, :fields_module]
+  end
+
   @doc """
   Defines the embedded translation container field on an `Ecto.Schema`.
 
@@ -238,6 +243,16 @@ defmodule Localize.Translate do
     pointing at a `Fields` schema of your own, which may carry extra fields such as an
     update timestamp.
 
+  * `:fields_module` — a per-locale embedded schema of your own, used in place of the
+    generated `Fields` schema. The translation schema is still generated, with each
+    non-default locale embedding this module. It must be an `Ecto.Schema` that defines
+    every field in `:translates` as a `:string`, which is checked when the parent schema
+    compiles, and it may define any other fields, such as an update timestamp or the name
+    of the translator. It must be compiled before the parent schema, so it cannot be a
+    module nested inside it. It cannot be combined with `build_field_schema: false`.
+
+  Any other option raises an `ArgumentError` when the schema compiles.
+
   ### Examples
 
       defmodule MyApp.Article do
@@ -253,6 +268,38 @@ defmodule Localize.Translate do
           translations :translations
         end
       end
+
+  A per-locale schema of your own keeps state beside each locale's translations:
+
+      defmodule MyApp.Article.TranslationFields do
+        use Ecto.Schema
+
+        @primary_key false
+        embedded_schema do
+          field :title, :string
+          field :body, :string
+          field :translated_by, :string
+          field :machine_translated, :boolean, default: false
+        end
+      end
+
+      defmodule MyApp.Article do
+        use Ecto.Schema
+        use Localize.Translate,
+          translates: [:title, :body],
+          locales: [:en, :es, :fr],
+          default_locale: :en
+
+        schema "articles" do
+          field :title, :string
+          field :body, :string
+          translations :translations, Translations, fields_module: MyApp.Article.TranslationFields
+        end
+      end
+
+  `Localize.Translate.translate/3` and `Localize.Translate.QueryBuilder` read only the
+  fields in `:translates`. A query on a whole locale, `translated(Article, a, :es)`, reads
+  the locale's whole object, so a locale that holds only such state is not `NULL`.
 
   """
   defmacro translations(field_name, translation_module \\ nil, locales_or_options \\ []) do
@@ -301,8 +348,11 @@ defmodule Localize.Translate do
   """
   defmacro translations(field_name, translation_module, locales, options) do
     caller = __CALLER__.module
+    Localize.Translate.__validate_trans_options__(caller, options)
+
     options = Keyword.merge(Localize.Translate.default_trans_options(), options)
-    {build_field_schema, _options} = Keyword.pop(options, :build_field_schema)
+    build_field_schema = Keyword.fetch!(options, :build_field_schema)
+    fields_module = Keyword.get(options, :fields_module)
 
     quote do
       if unquote(translation_module) && unquote(build_field_schema) do
@@ -310,6 +360,7 @@ defmodule Localize.Translate do
       end
 
       @translation_module Module.concat(unquote(caller), unquote(translation_module))
+      @translation_fields_module unquote(fields_module)
       @locales unquote(locales)
 
       embeds_one(unquote(field_name), @translation_module, on_replace: :update)
@@ -319,10 +370,27 @@ defmodule Localize.Translate do
   @doc false
   defmacro __build_embedded_schema__(env) do
     translation_module = Module.get_attribute(env.module, :translation_module)
+    fields_module = Module.get_attribute(env.module, :translation_fields_module)
     fields = Module.get_attribute(env.module, :trans_fields)
     locales = Module.get_attribute(env.module, :locales)
     default_locale = Module.get_attribute(env.module, :trans_default_locale)
 
+    if is_nil(fields_module) do
+      generated_fields = Module.concat(translation_module, Fields)
+
+      quote do
+        unquote(translation_schema(translation_module, generated_fields, locales, default_locale))
+        unquote(fields_schema(generated_fields, fields))
+      end
+    else
+      __validate_fields_module__(env.module, fields_module, fields)
+      translation_schema(translation_module, fields_module, locales, default_locale)
+    end
+  end
+
+  # The translation schema: one embed per non-default locale, each of the
+  # per-locale schema, which is the generated `Fields` or the caller's own.
+  defp translation_schema(translation_module, fields_module, locales, default_locale) do
     quote do
       defmodule unquote(translation_module) do
         @moduledoc false
@@ -333,12 +401,16 @@ defmodule Localize.Translate do
         embedded_schema do
           for locale_name <- List.wrap(unquote(locales)),
               locale_name != unquote(default_locale) do
-            embeds_one(locale_name, Module.concat(__MODULE__, Fields), on_replace: :update)
+            embeds_one(locale_name, unquote(fields_module), on_replace: :update)
           end
         end
       end
+    end
+  end
 
-      defmodule Module.concat(unquote(translation_module), Fields) do
+  defp fields_schema(fields_module, fields) do
+    quote do
+      defmodule unquote(fields_module) do
         @moduledoc false
 
         use Ecto.Schema
@@ -720,6 +792,86 @@ defmodule Localize.Translate do
           message:
             "#{inspect(module)} declares #{inspect(fields)} as translatable " <>
               "but they are not defined in the module's struct"
+    end
+  end
+
+  # The options of `translations/3,4`, checked as the macro expands. `options`
+  # is the quoted keyword list, so its keys are atoms and its values are AST.
+  @doc false
+  def __validate_trans_options__(module, options) do
+    unknown = Keyword.keys(options) -- known_trans_options()
+
+    cond do
+      match?([_ | _], unknown) ->
+        raise ArgumentError,
+          message:
+            "#{inspect(module)} gives translations the unknown options #{inspect(unknown)}. " <>
+              "The options are #{inspect(known_trans_options())}"
+
+      Keyword.has_key?(options, :fields_module) and options[:build_field_schema] == false ->
+        raise ArgumentError,
+          message:
+            "#{inspect(module)} gives translations both :fields_module and " <>
+              "build_field_schema: false. With build_field_schema: false no schema is " <>
+              "generated, so name the fields schema in a translation schema of your own"
+
+      true ->
+        :ok
+    end
+  end
+
+  # A caller's per-locale schema must be a compiled Ecto schema that defines
+  # every translatable field as a string, since translations are read from it
+  # by name and queried as text.
+  @doc false
+  def __validate_fields_module__(module, fields_module, fields) do
+    cond do
+      not compiled_module?(fields_module) ->
+        raise ArgumentError,
+          message:
+            "#{inspect(module)} names #{inspect(fields_module)} as its :fields_module, " <>
+              "but it is not a compiled module. Define it before #{inspect(module)}, " <>
+              "not nested inside it"
+
+      not function_exported?(fields_module, :__schema__, 2) ->
+        raise ArgumentError,
+          message:
+            "#{inspect(module)} names #{inspect(fields_module)} as its :fields_module, " <>
+              "but it is not an Ecto schema"
+
+      true ->
+        validate_fields_module_fields(module, fields_module, fields)
+    end
+  end
+
+  defp compiled_module?(module) when is_atom(module) do
+    match?({:module, _module}, Code.ensure_compiled(module))
+  end
+
+  defp compiled_module?(_other) do
+    false
+  end
+
+  defp validate_fields_module_fields(module, fields_module, fields) do
+    missing = fields -- fields_module.__schema__(:fields)
+    defined = fields -- missing
+    not_strings = Enum.reject(defined, &(fields_module.__schema__(:type, &1) == :string))
+
+    cond do
+      match?([_ | _], missing) ->
+        raise ArgumentError,
+          message:
+            "#{inspect(fields_module)} must define the translatable fields " <>
+              "#{inspect(missing)} of #{inspect(module)}"
+
+      match?([_ | _], not_strings) ->
+        raise ArgumentError,
+          message:
+            "#{inspect(fields_module)} must define the translatable fields " <>
+              "#{inspect(not_strings)} of #{inspect(module)} as :string"
+
+      true ->
+        :ok
     end
   end
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [v0.3.0] — Unreleased
+
+### Added
+
+* `translations/3` takes `fields_module:`, a per-locale embedded schema of your own used in place of the generated `Fields`, so state such as a translator or an update time can be kept beside each locale's translations. It must define every translatable field as a `:string`, which is checked when the parent schema compiles.
+
+### Changed
+
+* `translations/3` raises an `ArgumentError` at compile time for an option it does not know, where it ignored it.
+
+### Fixed
+
+* `Localize.Translate.JSON` encodes `Date`, `Time`, `NaiveDateTime` and `DateTime` as ISO 8601 strings and a `Decimal` as its text, so an embedded schema with such a field can be stored. It raised on them.
+
 ## [v0.2.0] — 2026-08-01
 
 The store behaviour is new public API and its first consumer — the Ash integration — has not yet written an adapter against it. The package stays on a 0.x line until that shape is agreed, so it can change without a major bump.

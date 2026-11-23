@@ -9,7 +9,11 @@ defmodule Localize.Translate.JSON do
 
   * `true` and `false` encode as JSON booleans.
 
-  * Structs encode as maps (the `:__struct__` key is dropped).
+  * `Date`, `Time`, `NaiveDateTime` and `DateTime` encode as ISO 8601 strings and a
+    `Decimal` as its text, which is the form Ecto reads back into an embedded schema's
+    `:date`, `:utc_datetime` and `:decimal` fields.
+
+  * Other structs encode as maps (the `:__struct__` key is dropped).
 
   * Other atoms encode as strings.
 
@@ -44,6 +48,9 @@ defmodule Localize.Translate.JSON do
 
       iex> Localize.Translate.JSON.encode!(nil)
       "null"
+
+      iex> Localize.Translate.JSON.encode!(%{at: ~U[2026-11-23 10:00:00Z]})
+      ~s({"at":"2026-11-23T10:00:00Z"})
 
   """
   @spec encode!(term()) :: binary()
@@ -106,6 +113,26 @@ defmodule Localize.Translate.JSON do
   defp encoder(nil, _encode), do: ~c"null"
   defp encoder(true, _encode), do: ~c"true"
   defp encoder(false, _encode), do: ~c"false"
+
+  defp encoder(%DateTime{} = value, encode) do
+    encoder(DateTime.to_iso8601(value), encode)
+  end
+
+  defp encoder(%NaiveDateTime{} = value, encode) do
+    encoder(NaiveDateTime.to_iso8601(value), encode)
+  end
+
+  defp encoder(%Date{} = value, encode) do
+    encoder(Date.to_iso8601(value), encode)
+  end
+
+  defp encoder(%Time{} = value, encode) do
+    encoder(Time.to_iso8601(value), encode)
+  end
+
+  defp encoder(%Decimal{} = value, encode) do
+    encoder(Decimal.to_string(value), encode)
+  end
 
   defp encoder(%_{} = struct, encode) do
     struct |> Map.from_struct() |> encoder(encode)
