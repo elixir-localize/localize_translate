@@ -143,7 +143,7 @@ Three pieces of magic are happening here:
 
 * **`use Localize.Translate`** records the translatable-field list, the locale list, and the default locale on the module. It also installs `__trans__/1` for runtime reflection and two `@after_compile` callbacks that validate the configuration against the actual struct.
 
-* **`translations :translations`** expands at compile time into an `embeds_one :translations, Translations, …` plus two generated submodules: `MyApp.Article.Translations` (the locale-keyed container) and `MyApp.Article.Translations.Fields` (the shape of each per-locale embed). The default locale is *deliberately omitted* from the container — its values live in the base columns.
+* **`translations :translations`** expands at compile time into an `embeds_one :translations, Translations, …` plus two generated submodules: `MyApp.Article.Translations` (the locale-keyed container) and `MyApp.Article.Translations.Fields` (the shape of each per-locale embed). The default locale is *deliberately omitted* from the container — its values live in the base columns. To use a per-locale schema of your own in place of the generated `Fields`, see "A per-locale schema of your own" under Step 8.
 
 * **`cast_embed(:translations, with: &translations_changeset/2)`** lets you control which locales accept input. Listing `:es` and `:fr` here is what enables those locales to be set through the form. You can omit a locale here to make it read-only, or `validate_required` inside the per-locale changeset.
 
@@ -352,6 +352,41 @@ With a `:map` field instead of `embeds_one`, you skip the structured-schema gene
 
 `Localize.Translate.translate/3` and `Localize.Translate.QueryBuilder.translated/3` work identically on both shapes — the only difference is what your changesets enforce.
 
+### A per-locale schema of your own
+
+Between the generated `Fields` schema and a free-form map sits a third shape: the generated `Translations` container, with each locale embedding a schema you write. Use it to keep state beside each locale's translations — who translated it, when, whether a person has reviewed it — and to give each locale a changeset of your own.
+
+```elixir
+defmodule MyApp.Article.TranslationFields do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key false
+  embedded_schema do
+    field :title, :string
+    field :body, :string
+    field :translated_by, :string
+    field :translated_at, :utc_datetime
+  end
+
+  def changeset(fields, params) do
+    fields
+    |> cast(params, [:title, :body, :translated_by, :translated_at])
+    |> validate_required([:title])
+  end
+end
+```
+
+Name it in the `translations` call of the parent schema:
+
+```elixir
+translations :translations, Translations, fields_module: MyApp.Article.TranslationFields
+```
+
+The schema must define every field in `:translates` as a `:string`, and must be compiled before the parent, so define it in a module of its own, not nested in the parent; both are checked when the parent compiles. `translate/2,3` and the query macros read only the translatable fields, so the extra fields never leak into a translated record; read them from the embed itself, `article.translations.es.translated_by`. `Localize.Translate.JSON` writes a date, a time and a `Decimal` in such a schema as text.
+
+To write both the `Translations` and the per-locale schema by hand, pass `build_field_schema: false` instead; the two options cannot be combined.
+
 ## Step 9 — Forms and Phoenix LiveView
 
 A reusable form partial that walks the locale list:
@@ -515,4 +550,4 @@ Strict validation catches typos but locks you out of free-form locale keys. If y
 
 * `Localize.Translate.JSON` covers the `:json`-based adapter Ecto and Postgrex are configured to use — relevant if you want to swap in a different JSON library.
 
-For the rest of the localisation stack — number formatting, dates, plurals, list formatting — pair `Localize.Translate` with [`ex_cldr`](https://hex.pm/packages/ex_cldr) or the `localize` family of libraries.
+For the rest of the localisation stack — number formatting, dates, plurals, list formatting — pair `Localize.Translate` with [`localize`](https://hex.pm/packages/localize) and the rest of its family of libraries.

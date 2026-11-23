@@ -1,57 +1,58 @@
 # Localize Translate
 
+`localize_translate` keeps the translations of an Ecto schema's fields in the schema itself, in one JSON column, and reads and queries them with CLDR locale fallback. It removes the need for a translation table beside every translatable table.
+
+## Features
+
+* **Embedded translations** — each translatable schema carries its translations in one `jsonb` column, so reading a record with its translations needs no join.
+
+* **Locale fallback** — `Localize.Translate.translate/2,3` takes a locale or a chain of them, and follows CLDR parent locales (`en-AU` → `en-001` → `en`) before falling back to the base column.
+
+* **Translated queries** — `Localize.Translate.QueryBuilder` provides `Ecto.Query` macros that filter and select translated values in SQL, with the same fallback.
+
+* **Per-locale state** — `translations/3` takes a per-locale schema of your own with `:fields_module`, to keep a translator, a timestamp or a review flag beside each locale's translations.
+
+* **Storage backends** — the `Localize.Translate.Store` behaviour, with an embedded store (the default) and a sibling-table store, one row per subject and locale.
+
+## Supported Elixir and OTP versions
+
+`localize_translate` requires **Elixir 1.17** or later and **OTP 26** or later.
+
 ## Installation
 
-The package can be installed by adding `localize_translate` to your list of dependencies in `mix.exs`:
+Add `localize_translate` to your list of dependencies in `mix.exs`:
 
 ```elixir
 def deps do
   [
-    {:localize_translate, "~> 0.2"}
+    {:localize_translate, "~> 0.3"}
   ]
 end
 ```
 
-Documentation can be found at [https://hexdocs.pm/localize_translate](https://hexdocs.pm/localize_translate).
+### Optional requirements
 
-## Attribution
+With Ecto SQL and Postgrex in your application, `Localize.Translate.QueryBuilder` generates database queries on translated data. The runtime `Localize.Translate.translate/2,3` functions work without them.
 
-`localize_translate` derives from [trans](https://github.com/crbelaus/trans) by [@crbelaus](https://github.com/crbelaus) and its CLDR-integrated fork [ex_cldr_trans](https://github.com/elixir-cldr/cldr_trans). It is the continuation of that work within the `localize` ecosystem, built on [`:localize`](https://hex.pm/packages/localize) for CLDR-aware locale validation and parent-chain fallback.
+* [Ecto SQL](https://hex.pm/packages/ecto_sql) 3.0 or later.
 
-### Introduction
-
-`localize_translate` provides a way to manage and query translations embedded into schemas and removes the necessity of maintaining extra tables only for translation storage.
-
-## Optional Requirements
-
-Having Ecto SQL and Postgrex in your application will allow you to use the `Localize.Translate.QueryBuilder` component to generate database queries based on translated data. The runtime `Localize.Translate.translate/2,3` functions work without those dependencies.
-
-- [Ecto SQL](https://hex.pm/packages/ecto_sql) 3.0 or higher
-- [PostgreSQL](https://hex.pm/packages/postgrex) 9.4 or higher (since `Localize.Translate` leverages the JSONB datatype)
+* [PostgreSQL](https://hex.pm/packages/postgrex) 9.4 or later, since `Localize.Translate` uses the `jsonb` datatype.
 
 ## Why Localize Translate?
 
-The traditional approach to content internationalization consists on using an additional table for each translatable schema. This table works only as a storage for the original schema translations. For example, we may have a `posts` and a `posts_translations` tables.
+The traditional approach to content internationalization uses an additional table for each translatable schema, which holds only that schema's translations: a `posts` table and a `posts_translations` table, for example.
 
 This approach has a few disadvantages:
 
-- It complicates the database schema because it creates extra tables that are coupled to the "main" ones.
-- It makes migrations and schemas more complicated, since we always have to keep the two tables in sync.
-- It requires constant JOINs in order to filter or fetch records along with their translations.
+* It complicates the database schema, because it creates extra tables that are coupled to the main ones.
 
-The approach used by `Localize.Translate` is based on modern RDBMSs support for unstructured datatypes. Instead of storing the translations in a different table, each translatable schema has an extra column that contains all of its translations. This approach drastically reduces the number of required JOINs when filtering or fetching records.
+* It makes migrations and schemas more complicated, since the two tables must always be kept in sync.
 
-## Storage backends
+* It requires constant joins to filter or fetch records along with their translations.
 
-Translations are read through a store, declared per schema. `Localize.Translate.Store.Embedded` is the default and needs no configuration — it keeps translations in a container field on the schema, which is the model described above.
+`Localize.Translate` relies instead on the support modern databases have for unstructured datatypes. Each translatable schema has an extra column that contains all of its translations, which drastically reduces the number of joins needed to filter or fetch records.
 
-`Localize.Translate.Store.SiblingResource` keeps them in a sibling table instead, one row per `(subject, locale)`. That is the model this package exists to avoid, so reach for it only when you need something the embedded model cannot express: per-translation workflow state, per-locale permissions, row-level translation history, or concurrent editing across locales without contending on one column.
-
-Both implement `Localize.Translate.Store`, so `translate/2,3` behaves identically either way, and a custom store — ETS, a file, a translation service — only has to implement that behaviour.
-
-`Localize.Translate` is lightweight and modularized. The `Localize.Translate` module provides the `use` macro for declaring translatable schemas, the runtime `translate/2,3` functions, and field reflection. `Localize.Translate.QueryBuilder` provides the `Ecto.Query` macros for filtering and selecting translated values in SQL.
-
-## Quickstart
+## Quick start
 
 Imagine that we have an `Article` schema that we want to translate:
 
@@ -68,7 +69,7 @@ end
 
 ### Add a JSON column
 
-The first step would be to add a new JSON column to the table so we can store the translations in it.
+The first step is to add a JSON column to the table to store the translations in.
 
 ```elixir
 defmodule MyApp.Repo.Migrations.AddTranslationsToArticles do
@@ -82,27 +83,25 @@ defmodule MyApp.Repo.Migrations.AddTranslationsToArticles do
 end
 ```
 
-### Generate database function migration
+### Generate the database function migration
 
-`localize_translate` defines a Postgres database function to support in-db field translation. A migration task is provided to generate the migration required to define this function.
+`localize_translate` defines a Postgres function that translates a field in the database. A mix task generates the migration that defines it.
 
-```elixir
-% MIX_ENV=test mix localize.translate.gen.translate_function
-* creating priv/repo/migrations
-* creating priv/repo/migrations/20220307212312_localize_translate_gen_translate_function.exs
+```bash
+mix localize.translate.gen.translate_function
 ```
 
-### Run migrations
+### Run the migrations
 
 Migrate the database to add the translations column and define the database function.
 
-```elixir
-% mix ecto.migrate
+```bash
+mix ecto.migrate
 ```
 
-### Add translations to schema
+### Add translations to the schema
 
-Once we have the new database column, update the Article schema to declare translatable fields and the configured locales:
+With the new column in place, declare the translatable fields and the configured locales in the schema:
 
 ```elixir
 defmodule MyApp.Article do
@@ -123,11 +122,11 @@ defmodule MyApp.Article do
 end
 ```
 
-The `:default_locale` field stores its values in the main schema columns; only the other locales get embedded translation fields.
+The `:default_locale` keeps its values in the main schema columns; only the other locales get embedded translation fields.
 
-### Casting translations
+### Cast translations
 
-`localize_translate` will generate a simple default changeset for the translations field. It looks like this:
+`localize_translate` generates a simple default changeset for each locale's translation fields. It looks like this:
 
 ```elixir
 def changeset(fields, params) do
@@ -137,7 +136,7 @@ def changeset(fields, params) do
 end
 ```
 
-That may not be flexible enough for all requirements. A custom changeset can be defined for the translations field:
+The schema's own changeset casts the translations field, and names the locales that take input:
 
 ```elixir
   def changeset(article, params \\ %{}) do
@@ -156,7 +155,25 @@ That may not be flexible enough for all requirements. A custom changeset can be 
 end
 ```
 
-### Per-locale state
+### Read and query translations
+
+After the schema is configured, use `Localize.Translate.translate/2,3` to fetch translations and `Localize.Translate.QueryBuilder` to query them:
+
+```elixir
+# Translate a single field, with fallback chain
+Localize.Translate.translate(article, :title, [:de, :es])
+
+# Translate the whole struct (and its embeds/associations) into Spanish
+Localize.Translate.translate(article, :es)
+
+# Filter on a translation in a query
+from a in Article,
+  where: translated(Article, a.title, :fr) == "Elixir"
+```
+
+Locales are validated with `Localize.validate_locale/1`, so atoms (`:en`), strings (`"en"`) and `Localize.LanguageTag` structs are all accepted. Fallback chains follow CLDR parent locales automatically — for example, `Localize.Translate.translate(article, :title, Localize.LanguageTag.new!("en-AU"))` walks `:"en-AU"` → `:"en-001"` → `:en`.
+
+## Per-locale state
 
 To keep state beside each locale's translations — who translated it, when, whether it was machine-translated — give `translations` a per-locale schema of your own with `:fields_module`. The `Translations` schema is still generated, and each locale embeds your schema instead of the generated `Fields`.
 
@@ -195,20 +212,26 @@ end
 
 The schema must define every field in `:translates` as a `:string`, which is checked when `MyApp.Article` compiles, and it must be defined before `MyApp.Article`, not nested inside it. `Localize.Translate.translate/3` and the query builder read only the translatable fields. A query on a whole locale, `translated(Article, a, :es)`, reads the locale's whole object, so a locale that holds only state is not `NULL`.
 
-### Query Building
+## Storage backends
 
-After the schema is configured, use `Localize.Translate.translate/2,3` to fetch translations and `Localize.Translate.QueryBuilder` to query them:
+Translations are read through a store, declared per schema. `Localize.Translate.Store.Embedded` is the default and needs no configuration — it keeps translations in a container field on the schema, which is the model described above.
 
-```elixir
-# Translate a single field, with fallback chain
-Localize.Translate.translate(article, :title, [:de, :es])
+`Localize.Translate.Store.SiblingResource` keeps them in a sibling table instead, one row per `(subject, locale)`. That is the model this package exists to avoid, so reach for it only when you need something the embedded model cannot express: per-translation workflow state, per-locale permissions, row-level translation history, or concurrent editing across locales without contending on one column.
 
-# Translate the whole struct (and its embeds/associations) into Spanish
-Localize.Translate.translate(article, :es)
+Both implement `Localize.Translate.Store`, so `translate/2,3` behaves identically either way, and a custom store — ETS, a file, a translation service — only has to implement that behaviour.
 
-# Filter on a translation in a query
-from a in Article,
-  where: translated(Article, a.title, :fr) == "Elixir"
-```
+## Documentation
 
-Locales are validated via `Localize.validate_locale/1`, so atoms (`:en`), strings (`"en"`), and `Localize.LanguageTag` structs are all accepted. Fallback chains follow CLDR parent locales automatically — for example, `Localize.Translate.translate(article, :title, Localize.LanguageTag.new!("en-AU"))` walks `:"en-AU"` → `:"en-001"` → `:en`.
+* **[Building translatable database systems](https://hexdocs.pm/localize_translate/translatable_database_systems.html)** — the design choices and the step-by-step setup, from the migration to forms, queries and tests.
+
+* **[Changelog](https://hexdocs.pm/localize_translate/changelog.html)** — what changed in each release.
+
+The full documentation is on [HexDocs](https://hexdocs.pm/localize_translate).
+
+## Attribution
+
+`localize_translate` derives from [trans](https://github.com/crbelaus/trans) by [@crbelaus](https://github.com/crbelaus) and its CLDR-integrated fork [ex_cldr_trans](https://github.com/elixir-cldr/cldr_trans). It is the continuation of that work within the `localize` ecosystem, built on [`:localize`](https://hex.pm/packages/localize) for CLDR-aware locale validation and parent-chain fallback.
+
+## License
+
+`localize_translate` is released under the Apache License 2.0; see [LICENSE.md](https://github.com/elixir-localize/localize_translate/blob/v0.3.0/LICENSE.md).
