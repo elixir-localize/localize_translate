@@ -17,8 +17,8 @@ defmodule Localize.Translate do
 
   * `translatable?/2` reports whether a field is declared as translatable.
 
-  For `Ecto.Query` support, `Localize.Translate.QueryBuilder` provides the `translated/3`
-  and `translated_as/3` macros (requires `Ecto.SQL`).
+  For `Ecto.Query` support, `Localize.Translate.QueryBuilder` provides the `translated/4`
+  and `translated_as/4` macros (requires `Ecto.SQL`).
 
   ### Locale handling
 
@@ -27,10 +27,10 @@ defmodule Localize.Translate do
 
   * **All locale inputs validate.** Atoms (`:en`), strings (`"en"`), and
     `%Localize.LanguageTag{}` structs are accepted anywhere a locale is expected — in
-    `:locales`, `translate/N`, and `QueryBuilder.translated/3`. Each value is run
+    `:locales`, `translate/N`, and `QueryBuilder.translated/4`. Each value is run
     through `Localize.validate_locale/1` and unwrapped to its `:cldr_locale_id` atom.
     An invalid locale never raises at runtime: `translate/2,3` and
-    `QueryBuilder.translated/3` leave it out of the fallback chain, so it resolves to
+    `QueryBuilder.translated/4` leave it out of the fallback chain, so it resolves to
     the next locale or the base value, and only `translate!/3` raises it. An invalid
     locale in the `:locales` option raises when the schema compiles.
 

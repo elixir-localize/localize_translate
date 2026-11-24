@@ -213,25 +213,21 @@ translate!(article, :title, :de)
 
 ### Where does the "current locale" come from?
 
-`Localize.Translate` does not own a current-locale concept. Every read takes an explicit locale. This is deliberate — it keeps the library composable with whatever locale-resolution strategy the application already uses (`Gettext.get_locale/0`, a plug that reads `Accept-Language`, a session key, a user preference, or a fully-fledged backend like `ex_cldr`). A thin helper in your app is usually all you need:
+The current locale is Localize's: `Localize.get_locale/0`, set for the calling process with `Localize.put_locale/1`. In a Phoenix application a plug usually sets it from the request, such as `Localize.Plug.PutLocale` from `localize_web`, which reads the URL, the session or `Accept-Language`.
+
+`translate/1`, and `translate/2` given a field name, read it and walk its CLDR parent chain:
 
 ```elixir
-defmodule MyAppWeb.Locale do
-  def current, do: Process.get(:locale, :en)
+Localize.put_locale(:fr)
 
-  def with_locale(locale, fun) do
-    prev = Process.get(:locale)
-    Process.put(:locale, locale)
-    try do
-      fun.()
-    after
-      if prev, do: Process.put(:locale, prev), else: Process.delete(:locale)
-    end
-  end
-end
+translate(article).title
+#=> "Comment écrire un correcteur orthographique"
+
+translate(article, :title)
+#=> "Comment écrire un correcteur orthographique"
 ```
 
-Then call `Localize.Translate.translate(article, :title, MyAppWeb.Locale.current())`.
+Every other read takes an explicit locale, so code that resolves the locale some other way, from a user preference say, passes it in: `translate(article, :title, user.locale)`.
 
 ## Step 6 — Query translated content
 
@@ -361,7 +357,7 @@ end
 
 With a `:map` field instead of `embeds_one`, you skip the structured-schema generation entirely. The trade-off is that you give up changeset-driven validation per locale — the map accepts anything. This works well when translations come from a pipeline (a translation service, an import job) rather than a form.
 
-`Localize.Translate.translate/3` and `Localize.Translate.QueryBuilder.translated/3` work identically on both shapes — the only difference is what your changesets enforce.
+`Localize.Translate.translate/3` and `Localize.Translate.QueryBuilder.translated/4` work identically on both shapes — the only difference is what your changesets enforce.
 
 ### A per-locale schema of your own
 
@@ -493,7 +489,7 @@ It's not difficult, but it's not free. Worth planning for at design time — fav
 
 `Localize.Translate` builds on [`:localize`](https://hex.pm/packages/localize) for locale handling, so a few things come for free without any extra setup.
 
-**Locales validate.** Every locale you pass — in `:locales`, in `translate/N`, in `QueryBuilder.translated/3` — runs through `Localize.validate_locale/1`. Atoms, strings, and `%Localize.LanguageTag{}` structs converge to the same canonical `:cldr_locale_id` atom:
+**Locales validate.** Every locale you pass — in `:locales`, in `translate/N`, in `QueryBuilder.translated/4` — runs through `Localize.validate_locale/1`. Atoms, strings, and `%Localize.LanguageTag{}` structs converge to the same canonical `:cldr_locale_id` atom. At runtime an invalid locale is left out of the fallback chain rather than raised on, so a locale taken from a request is safe to pass; only `translate!/3` raises it.
 
 ```elixir
 {:ok, en_au} = Localize.LanguageTag.new("en-AU")
@@ -511,7 +507,7 @@ Typos raise at compile time:
 ```elixir
 use Localize.Translate,
   translates: [:title],
-  locales: [:en, :englsh],  # ** (Localize.InvalidLocaleError) "englsh" is not a valid locale
+  locales: [:en, :englsh],  # ** (Localize.InvalidLocaleError) The locale "englsh" is not valid.
   default_locale: :en
 ```
 
@@ -549,7 +545,7 @@ When the query is built, the tag is expanded to `[:"es-419", :es]`, filtered aga
 
 ### Trade-off
 
-Strict validation catches typos but locks you out of free-form locale keys. If you want to key translations by something other than a CLDR locale identifier (e.g. `:legalese_en`), `Localize.Translate` is the wrong tool — store the data in a plain JSONB column instead.
+Validation catches typos in `:locales` at compile time, but locks you out of free-form locale keys. If you want to key translations by something other than a CLDR locale identifier (e.g. `:legalese_en`), `Localize.Translate` is the wrong tool — store the data in a plain JSONB column instead.
 
 ## Where to next
 

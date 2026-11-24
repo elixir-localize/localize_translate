@@ -8,7 +8,9 @@
 
 * **Locale fallback** — `Localize.Translate.translate/2,3` takes a locale or a chain of them, and follows CLDR parent locales (`en-AU` → `en-001` → `en`) before falling back to the base column.
 
-* **Translated queries** — `Localize.Translate.QueryBuilder` provides `Ecto.Query` macros that filter and select translated values in SQL, with the same fallback.
+* **Translated queries** — `Localize.Translate.QueryBuilder` provides `Ecto.Query` macros that filter and select translated values in SQL, with the same fallback and no database function to install.
+
+* **Runtime default locale** — `:default_locale` can be a function, for applications whose base columns are written in each site's own language, and queries take the default as an option.
 
 * **Per-locale state** — `translations/3` takes a per-locale schema of your own with `:fields_module`, to keep a translator, a timestamp or a review flag beside each locale's translations.
 
@@ -25,7 +27,7 @@ Add `localize_translate` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:localize_translate, "~> 0.3"}
+    {:localize_translate, "~> 0.4"}
   ]
 end
 ```
@@ -226,4 +228,4 @@ The full documentation is on [HexDocs](https://hexdocs.pm/localize_translate).
 
 ## License
 
-`localize_translate` is released under the Apache License 2.0; see [LICENSE.md](https://github.com/elixir-localize/localize_translate/blob/v0.3.0/LICENSE.md).
+`localize_translate` is released under the Apache License 2.0; see [LICENSE.md](https://github.com/elixir-localize/localize_translate/blob/v0.4.0/LICENSE.md).

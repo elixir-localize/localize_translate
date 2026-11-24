@@ -2,7 +2,7 @@ defmodule Localize.Translate.MixProject do
   use Mix.Project
 
   @name "Localize Translate"
-  @version "0.3.0"
+  @version "0.4.0"
   @source_url "https://github.com/elixir-localize/localize_translate"
 
   def project do
@@ -67,6 +67,15 @@ defmodule Localize.Translate.MixProject do
       ],
       groups_for_extras: [
         Guides: ~r"guides/.*"
+      ],
+      groups_for_modules: [
+        Queries: [Localize.Translate.QueryBuilder],
+        Stores: [
+          Localize.Translate.Store,
+          Localize.Translate.Store.Embedded,
+          Localize.Translate.Store.SiblingResource
+        ],
+        Internals: [Localize.Translate.JSON]
       ]
     ]
   end
@@ -109,7 +118,7 @@ defmodule Localize.Translate.MixProject do
         "guides",
         "mix.exs",
         "README.md",
-        "LICENSE.md",
+        "LICENSE*",
         "CHANGELOG.md"
       ]
     ]
