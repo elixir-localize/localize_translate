@@ -2,7 +2,7 @@
 
 **Status:** in progress, 2026-11-24
 
-A design for using `Localize.Translate` with Ash resources, prompted by mishka_cms_core, an Ash application whose sites each choose their languages at runtime. The extension is built as its own package, `ash_localize_translate`, and tested on ETS and AshPostgres; a final review found defects to fix before its first release, which waits on `localize_translate` 0.4.0 reaching hex.
+A design for using `Localize.Translate` with Ash resources, prompted by mishka_cms_core, an Ash application whose sites each choose their languages at runtime. The extension is built as its own package, `ash_localize_translate`, and tested on ETS and AshPostgres; the defects a final review found are fixed, and its first release waits on `localize_translate` 0.4.0 reaching hex.
 
 ## The problem
 
@@ -149,13 +149,13 @@ Run 2026-11-24 against Ash 3.38.0, AshPostgres 2.16 and Spark 2.7.10, in a throw
 
 ## Tasks
 
-* [ ] **Fix the review's findings in `ash_localize_translate`** — a `false` translation skipped by the calculation's `||`; stored non-string values not cast back to their types; single-record writes re-checking the whole stored map; whitespace-only values handled differently on the atomic path; structs and tuple keys raising instead of erroring; dialyzer failing on the `:mfa` option types; the transformer's order against `BelongsToAttribute`. Tracked in that package's `TODO.md`.
-
-* [ ] **Build the extension on the core's public API** — `reflection/1` for `__trans__/1` and `locale_id/1` for locale validation, both added in 0.4.0 for this.
-
 * [ ] **Release** — `localize_translate` 0.4.0, then `ash_localize_translate` 0.1.0 depending on it from hex.
 
 ### Done
+
+* [x] **Fix the review's findings in `ash_localize_translate`** — `false` translations, stored value types, repairable rows, whitespace values, crashes on structs, dialyzer, and transformer order, each with tests on ETS and AshPostgres. 2026-11-24.
+
+* [x] **Build the extension on the core's public API** — `reflection/1` and `locale_id/1`. 2026-11-24.
 
 * [x] **A changeset validation for Ecto with a function default locale** — `Localize.Translate.validate_translations/1`, the Ecto counterpart of the extension's validation. 2026-11-24.
 
