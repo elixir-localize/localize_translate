@@ -6,21 +6,32 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
     import Mix.Ecto, except: [migrations_path: 1]
     import Macro, only: [camelize: 1, underscore: 1]
 
-    @shortdoc "Generates a migration for the translate_field function, which is no longer needed"
+    @shortdoc "(Deprecated) Generates a migration for the unused translate_field function"
 
     @moduledoc """
     Generates a migration to add a database function `translate_field` that uses the
     `Localize.Translate` structured translation schema to resolve a translation for a field.
 
-    Since 0.4.0 `Localize.Translate.QueryBuilder` no longer calls this function, so a new
-    application does not need it. A database that already has it can keep it or drop it.
+    This task is deprecated and will be removed in a future release. Since 0.4.0
+    `Localize.Translate.QueryBuilder` walks the locale chain in plain SQL and no longer
+    calls this function, so a new application does not need it. A database that already
+    has it can keep it or drop it.
 
     """
+
+    @moduledoc deprecated:
+                 "Not needed since 0.4.0: Localize.Translate.QueryBuilder no longer calls translate_field"
+
+    @deprecation_notice "warning: mix localize.translate.gen.translate_function is deprecated " <>
+                          "and will be removed in a future release. Since localize_translate " <>
+                          "0.4.0 queries no longer call the translate_field function, so the " <>
+                          "migration is not needed."
 
     @doc false
     @dialyzer {:no_return, run: 1}
 
     def run(args) do
+      warn_deprecated()
       no_umbrella!("localize_translate_gen_translate_function")
       repos = parse_repo(args)
       name = "localize_translate_gen_translate_function"
@@ -44,6 +55,11 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
           Mix.Task.run("ecto.migrate", [repo])
         end
       end)
+    end
+
+    @doc false
+    def warn_deprecated do
+      Mix.shell().info([:yellow, @deprecation_notice, :reset])
     end
 
     defp timestamp do

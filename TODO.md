@@ -4,8 +4,6 @@ Work planned for `localize_translate`; shipped changes are in the [CHANGELOG](CH
 
 ## Open
 
-* [ ] **The `translate_field` generator task** — nothing calls the function since the `QueryBuilder` rewrite. Needs a decision: deprecate it in 0.4.0, or remove it.
-
 * [ ] **Dialyzer has not run** on the 0.4.0 changes; to run before the release, on request.
 
 ## In progress
@@ -13,6 +11,8 @@ Work planned for `localize_translate`; shipped changes are in the [CHANGELOG](CH
 * [ ] **Ash integration** — an Ash extension with a validated translations type, data-layer calculations for filtering and sorting, and runtime per-tenant locales, in a separate package, `ash_localize_translate`; proposal in [plans/ash-integration.md](plans/ash-integration.md). The spike and the three core fixes are done; the new package is next.
 
 ## Done
+
+* [x] **The `translate_field` generator task is deprecated** — it warns when run and its docs carry the deprecation; removal is for a later release. 2026-11-24, unreleased (0.4.0).
 
 * [x] **House style** — 40 keyword-form functions in block form, 13 one-line pipelines split (doc examples and tests included), and `options` for `opts` in `using/1` and `__using__/1`. 2026-11-24, unreleased (0.4.0).
 

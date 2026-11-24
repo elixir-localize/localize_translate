@@ -16,6 +16,10 @@
 
 * `QueryBuilder` no longer needs the `translate_field` database function: every query walks the locale chain with a plain SQL subquery, so new applications skip `mix localize.translate.gen.translate_function`. A database that has the function can keep it or drop it.
 
+### Deprecated
+
+* `mix localize.translate.gen.translate_function` warns when run and will be removed in a future release, since queries no longer call the `translate_field` function it creates.
+
 ### Fixed
 
 * `translate!/3` loads translations before resolving, as `translate/3` does, so it works with `Store.SiblingResource`; it raised "translation doesn't exist" for every locale.

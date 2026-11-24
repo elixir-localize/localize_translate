@@ -55,6 +55,40 @@ defmodule Localize.Translate.GenFunctionMigrationTest do
 
       assert function_exported?(TranslateFunction, :run, 1)
       assert Mix.Task.shortdoc(TranslateFunction) =~ "translate_field"
+      assert Mix.Task.shortdoc(TranslateFunction) =~ "Deprecated"
     end
+
+    test "is marked deprecated in its documentation metadata" do
+      {:docs_v1, _anno, _language, _format, _moduledoc, metadata, _docs} =
+        Code.fetch_docs(TranslateFunction)
+
+      assert metadata.deprecated =~ "translate_field"
+    end
+  end
+end
+
+defmodule Localize.Translate.GenFunctionMigrationDeprecationTest do
+  @moduledoc """
+  The deprecation warning of the `localize.translate.gen.translate_function` mix task. Not
+  async, since it swaps the global Mix shell.
+
+  """
+
+  use ExUnit.Case, async: false
+
+  alias Mix.Tasks.Localize.Translate.Gen.TranslateFunction
+
+  setup do
+    shell = Mix.shell()
+    Mix.shell(Mix.Shell.Process)
+    on_exit(fn -> Mix.shell(shell) end)
+  end
+
+  test "warns that the task is deprecated" do
+    TranslateFunction.warn_deprecated()
+
+    assert_received {:mix_shell, :info, [message]}
+    assert message =~ "deprecated"
+    assert message =~ "translate_field"
   end
 end
