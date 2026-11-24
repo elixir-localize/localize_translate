@@ -6,6 +6,8 @@
 
 * `:default_locale` also takes a `{module, function, arguments}` tuple, called with the struct (or `nil` for a query), for a default known only at runtime. `default_locale/1` resolves it, and `QueryBuilder.translated/4` and `translated_as/4` take a `:default_locale` option.
 
+* `locale_chain/2` expands a locale or list into the CLDR fallback chain the reads walk, leaving out invalid locales, with a `:supported` filter, for code that builds its own lookups such as a data-layer calculation.
+
 * `__trans__(:associations)` names the fields holding related records that `translate/2` also translates: an Ecto schema's associations and embeds by default, or a list of its own from a module that defines `__trans__/1` itself.
 
 ### Changed

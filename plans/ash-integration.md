@@ -63,7 +63,7 @@ For each translated field the extension adds a calculation named `translated_<fi
 
 1. Takes the locale from the argument, then the query's `:locale` context, then `Localize.get_locale/0`.
 
-2. Expands it to its CLDR parent chain with `Localize.Translate.Locale.expand/1` (`fr-CA` → `fr`).
+2. Expands it to its CLDR parent chain with `Localize.Translate.locale_chain/2` (`fr-CA` → `fr`), public since 0.4.0 for this purpose.
 
 3. Returns an expression that reads each locale in turn and falls back to the base attribute, of the form `type(translations["fr-CA"]["name"], :string) || type(translations["fr"]["name"], :string) || name`.
 

@@ -17,6 +17,10 @@ defmodule Localize.Translate do
 
   * `translatable?/2` reports whether a field is declared as translatable.
 
+  * `default_locale/1` resolves the locale of a struct's base fields, and `locale_chain/2`
+    expands a locale into the CLDR fallback chain the reads walk, for code that builds its
+    own lookups, such as a data-layer calculation.
+
   For `Ecto.Query` support, `Localize.Translate.QueryBuilder` provides the `translated/4`
   and `translated_as/4` macros (requires `Ecto.SQL`).
 
@@ -883,6 +887,64 @@ defmodule Localize.Translate do
 
   def default_locale(module) when is_atom(module) do
     resolve_default_locale(module, nil)
+  end
+
+  @doc """
+  Expands a locale, or a list of locales, into the CLDR fallback chain that
+  `translate/2,3` and `QueryBuilder.translated/4` walk.
+
+  Each locale is validated and followed up its CLDR parent chain, stopping before the root
+  (`:"en-AU"` → `:"en-001"` → `:en`). A list is expanded locale by locale and
+  deduplicated in order. A locale that is not valid, `nil` included, is left out, as the
+  reads leave it out, so a locale taken from a request is safe to pass.
+
+  ### Arguments
+
+  * `locale_or_locales` is a locale (an atom, a string or a `Localize.LanguageTag`) or a
+    list of them.
+
+  * `options` is a keyword list of options.
+
+  ### Options
+
+  * `:supported` is a list of locale atoms to keep, such as a schema's
+    `__trans__(:locales)`, dropping parents no translation is stored for. `nil` or an
+    empty list, the default, keeps the whole chain.
+
+  ### Returns
+
+  * The chain as a list of CLDR locale id atoms, which is empty when no locale is valid.
+
+  ### Examples
+
+      iex> Localize.Translate.locale_chain("fr-CA")
+      [:"fr-CA", :fr]
+
+      iex> Localize.Translate.locale_chain([:"en-AU", :es])
+      [:"en-AU", :"en-001", :en, :es]
+
+      iex> Localize.Translate.locale_chain(["not a locale", :es])
+      [:es]
+
+      iex> Localize.Translate.locale_chain(:"en-AU", supported: [:en, :es])
+      [:en]
+
+  """
+  @spec locale_chain(locale_list() | struct() | nil, keyword()) :: [atom()]
+  def locale_chain(locale_or_locales, options \\ []) do
+    supported = supported_locales(options)
+    Localize.Translate.Locale.expand_valid(locale_or_locales, supported)
+  end
+
+  defp supported_locales(options) when is_list(options) do
+    case Keyword.get(options, :supported) do
+      supported when is_list(supported) -> supported
+      _other -> nil
+    end
+  end
+
+  defp supported_locales(_options) do
+    nil
   end
 
   defp resolve_default_locale(module, subject) do
