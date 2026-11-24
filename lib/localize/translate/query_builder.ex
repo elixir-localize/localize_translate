@@ -147,8 +147,9 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
       field = field(translatable)
       module = Macro.expand(module, __CALLER__)
       validate_field(module, field)
-      locales = locales_param(module, locale)
-      default = default_locale_param(module, options)
+      default_call = default_locale_call(module, options)
+      locales = locales_param(module, locale, default_call)
+      default = quote do: ^unquote(default_call)
       generate_query(schema(translatable), module, field, locales, default)
     end
 
@@ -255,31 +256,35 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
 
     # The locale chain as a pinned query parameter, expanded through the CLDR parent
     # chain, validated and filtered to the schema's locales when the query is built.
-    defp locales_param(module, locale) do
+    defp locales_param(module, locale, default_call) do
       supported = module.__trans__(:locales)
 
       quote do
-        ^Localize.Translate.QueryBuilder.list_to_sql_array(unquote(locale), unquote(supported))
+        ^Localize.Translate.QueryBuilder.list_to_sql_array(
+          unquote(locale),
+          unquote(supported),
+          unquote(default_call)
+        )
       end
     end
 
     # The default locale as a pinned query parameter, resolved when the query is built:
     # from the `:default_locale` option when one is given, otherwise from the schema.
-    defp default_locale_param(module, options) when is_list(options) do
+    defp default_locale_call(module, options) when is_list(options) do
       if Keyword.has_key?(options, :default_locale) do
         locale = Keyword.fetch!(options, :default_locale)
 
         quote do
-          ^Localize.Translate.QueryBuilder.__default_locale__(unquote(module), unquote(locale))
+          Localize.Translate.QueryBuilder.__default_locale__(unquote(module), unquote(locale))
         end
       else
         quote do
-          ^Localize.Translate.QueryBuilder.__default_locale__(unquote(module))
+          Localize.Translate.QueryBuilder.__default_locale__(unquote(module))
         end
       end
     end
 
-    defp default_locale_param(_module, options) do
+    defp default_locale_call(_module, options) do
       raise ArgumentError,
         message:
           "Localize.Translate.QueryBuilder options must be a literal keyword list, got: #{Macro.to_string(options)}"
@@ -313,10 +318,21 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
     end
 
     @doc false
-    def list_to_sql_array(locales, supported \\ nil) do
+    # The chain is filtered to the schema's locales with the default locale kept, as
+    # `Localize.Translate.translate/3` filters it, so memory and SQL agree.
+    def list_to_sql_array(locales, supported \\ nil, default_locale \\ nil) do
+      filter = Localize.Translate.chain_filter(supported, default_locale_id(default_locale))
+
       locales
-      |> Localize.Translate.Locale.expand_valid(supported)
+      |> Localize.Translate.Locale.expand_valid(filter)
       |> Enum.map(&to_string/1)
+    end
+
+    defp default_locale_id(default_locale) do
+      case Localize.Translate.locale_id(default_locale) do
+        {:ok, locale_id} -> locale_id
+        {:error, _exception} -> nil
+      end
     end
 
     defp schema({{:., _, [schema, _field]}, _metadata, _args}) do

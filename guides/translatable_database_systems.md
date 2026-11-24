@@ -550,7 +550,7 @@ from a in Article,
   where: translated(Article, a.title, tag) == ^needle
 ```
 
-When the query is built, the tag is expanded to `[:"es-419", :es]`, filtered against the schema's declared `[:en, :es, :fr]`, and only `:es` reaches SQL, which keeps the locale array passed to the database minimal. A literal `:"es-419"` is expanded the same way.
+When the query is built, the tag is expanded to `[:"es-419", :es]`, filtered against the schema's declared `[:en, :es, :fr]`, and only `:es` reaches SQL, which keeps the locale array passed to the database minimal. The default locale is always kept, listed or not, and `translate/2,3` filter the chain the same way, so a read in memory and a query agree. A literal `:"es-419"` is expanded the same way.
 
 ### Trade-off
 

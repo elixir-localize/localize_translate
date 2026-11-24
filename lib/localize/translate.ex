@@ -822,7 +822,7 @@ defmodule Localize.Translate do
   def translate(%{__struct__: _module} = translatable, locale_or_field) do
     case classify_locale_or_field(translatable, locale_or_field) do
       {:field, field} -> translate(translatable, field, default_locale_for(translatable))
-      {:locale, chain} -> do_translate(translatable, chain)
+      {:locale, locale} -> do_translate(translatable, locale)
     end
   end
 
@@ -830,13 +830,16 @@ defmodule Localize.Translate do
     other
   end
 
+  # The locale is expanded for each struct, so a related record walks a chain filtered
+  # by its own `:locales` and default locale rather than its parent's.
   defp do_translate(%{__struct__: module} = translatable, locale) do
     if Keyword.has_key?(module.__info__(:functions), :__trans__) do
       default_locale = default_locale(translatable)
+      chain = reading_chain(locale, module, default_locale)
       translatable = load_translations(translatable)
 
       translatable
-      |> translate_fields(locale, default_locale)
+      |> translate_fields(chain, default_locale)
       |> translate_assocs(locale)
     else
       translatable
@@ -860,8 +863,10 @@ defmodule Localize.Translate do
   ### Returns
 
   * The translated value, or the value from the base column when no translation exists
-    for any locale in the chain. A `nil` translation counts as missing, so the chain moves
-    on to its next locale. A locale that is not valid, including `nil`, is left out of the
+    for any locale in the chain. The chain is filtered to the schema's `:locales`, with
+    its default locale kept, as `QueryBuilder.translated/4` filters it, so a stored
+    locale the schema does not list is not read. A `nil` translation counts as missing,
+    so the chain moves on to its next locale. A locale that is not valid, including `nil`, is left out of the
     chain rather than raised on, so a locale taken from a request is safe to pass.
 
   * The base value of a field that is not declared translatable, or `nil` for a field the
@@ -891,9 +896,9 @@ defmodule Localize.Translate do
     end
   end
 
-  defp translate_translatable(translatable, field, locale) do
-    chain = expand_locale(locale)
+  defp translate_translatable(%{__struct__: module} = translatable, field, locale) do
     default_locale = default_locale(translatable)
+    chain = reading_chain(locale, module, default_locale)
     translatable = load_translations(translatable)
 
     case translate_field(translatable, chain, field, default_locale) do
@@ -945,9 +950,9 @@ defmodule Localize.Translate do
     end
   end
 
-  defp translate_translatable!(translatable, field, locale) do
-    chain = expand_locale!(locale)
+  defp translate_translatable!(%{__struct__: module} = translatable, field, locale) do
     default_locale = default_locale(translatable)
+    chain = reading_chain!(locale, module, default_locale)
     translatable = load_translations(translatable)
 
     case translate_field(translatable, chain, field, default_locale) do
@@ -1111,6 +1116,11 @@ defmodule Localize.Translate do
     `__trans__(:locales)`, dropping parents no translation is stored for. `nil` or an
     empty list, the default, keeps the whole chain.
 
+  * `:default_locale` is the locale of the base fields, kept in the chain when
+    `:supported` filters it even if it is not listed, so a read of it still reaches
+    the base fields. `translate/2,3` and `QueryBuilder.translated/4` filter the same
+    way.
+
   ### Returns
 
   * The chain as a list of CLDR locale id atoms, which is empty when no locale is valid.
@@ -1129,10 +1139,13 @@ defmodule Localize.Translate do
       iex> Localize.Translate.locale_chain(:"en-AU", supported: [:en, :es])
       [:en]
 
+      iex> Localize.Translate.locale_chain([:en, :es], supported: [:es, :fr], default_locale: :en)
+      [:en, :es]
+
   """
   @spec locale_chain(locale_list() | struct() | nil, keyword()) :: [atom()]
   def locale_chain(locale_or_locales, options \\ []) do
-    supported = supported_locales(options)
+    supported = chain_filter(supported_locales(options), chain_default_locale(options))
     Localize.Translate.Locale.expand_valid(locale_or_locales, supported)
   end
 
@@ -1144,6 +1157,17 @@ defmodule Localize.Translate do
   end
 
   defp supported_locales(_options) do
+    nil
+  end
+
+  defp chain_default_locale(options) when is_list(options) do
+    case locale_id(Keyword.get(options, :default_locale)) do
+      {:ok, locale_id} -> locale_id
+      {:error, _exception} -> nil
+    end
+  end
+
+  defp chain_default_locale(_options) do
     nil
   end
 
@@ -1302,7 +1326,7 @@ defmodule Localize.Translate do
     if translatable_field?(module, value) do
       {:field, value}
     else
-      {:locale, expand_locale(value)}
+      {:locale, value}
     end
   end
 
@@ -1312,17 +1336,40 @@ defmodule Localize.Translate do
       value in module.__trans__(:fields)
   end
 
-  # `translate/2,3` leave an invalid locale out of the chain, so a locale taken from a
-  # request falls through to the next locale or the base value instead of raising.
-  defp expand_locale(locale) do
-    Localize.Translate.Locale.expand_valid(locale)
+  # The chain a read walks: expanded through CLDR parents, filtered to the schema's
+  # `:locales` with the default locale kept, as `QueryBuilder.translated/4` and
+  # `locale_chain/2` filter it. `translate/2,3` leave an invalid locale out, so a
+  # locale taken from a request falls through instead of raising.
+  defp reading_chain(locale, module, default_locale) do
+    supported = chain_filter(module.__trans__(:locales), default_locale)
+    Localize.Translate.Locale.expand_valid(locale, supported)
   end
 
-  defp expand_locale!(locale) do
-    case Localize.Translate.Locale.expand(locale) do
+  defp reading_chain!(locale, module, default_locale) do
+    supported = chain_filter(module.__trans__(:locales), default_locale)
+
+    case Localize.Translate.Locale.expand(locale, supported) do
       {:ok, chain} -> chain
       {:error, exception} -> raise exception
     end
+  end
+
+  @doc false
+  # The locales a chain is filtered to: the supported list with the default locale
+  # added, since the base fields hold the default locale's text whether or not it is
+  # listed, or `nil` for no filtering.
+  @spec chain_filter([atom()] | nil, atom() | nil) :: [atom()] | nil
+  def chain_filter([_ | _] = supported, default_locale)
+      when is_atom(default_locale) and not is_nil(default_locale) do
+    [default_locale | supported]
+  end
+
+  def chain_filter([_ | _] = supported, _default_locale) do
+    supported
+  end
+
+  def chain_filter(_supported, _default_locale) do
+    nil
   end
 
   # With `:localize` always present, `current/0` reliably returns a `LanguageTag`.

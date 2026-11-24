@@ -12,11 +12,13 @@
 
 * `locale_id/1` validates a locale and returns the CLDR locale id translations are keyed by, or an error, for code that stores or reads translations itself.
 
-* `locale_chain/2` expands a locale or list into the CLDR fallback chain the reads walk, leaving out invalid locales, with a `:supported` filter, for code that builds its own lookups such as a data-layer calculation.
+* `locale_chain/2` expands a locale or list into the CLDR fallback chain the reads walk, leaving out invalid locales, with `:supported` and `:default_locale` options, for code that builds its own lookups such as a data-layer calculation.
 
 * `__trans__(:associations)` names the fields holding related records that `translate/2` also translates: an Ecto schema's associations and embeds by default, or a list of its own from a module that defines `__trans__/1` itself.
 
 ### Changed
+
+* `translate/2,3` filter the locale chain by the schema's `:locales`, keeping the default locale, as queries do, so a stored locale the schema no longer lists is not read; `translate/2` filters each related record by its own `:locales`.
 
 * `translate/3` returns the base value for a field that is not translatable, and `nil` for a field the struct lacks or a value that is not a struct, where it raised; `translate!/3` raises an `ArgumentError` for these instead of a `RuntimeError`. Both take a string field name without creating an atom.
 
@@ -29,6 +31,8 @@
 * `mix localize.translate.gen.translate_function` warns when run and will be removed in a future release, since queries no longer call the `translate_field` function it creates.
 
 ### Fixed
+
+* A query on a schema whose default locale is not in `:locales` dropped the default from the chain, so it read a later translation instead of the base column; the default locale is now kept.
 
 * A language CLDR has no data for, such as `"tlh"`, resolves to the root `und` and is now left out of a chain and refused in `:locales`; every such language was read under the one `"und"` key.
 
