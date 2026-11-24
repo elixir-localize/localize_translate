@@ -126,6 +126,11 @@ defmodule Localize.Translate do
   * `__trans__(:default_locale)` - Returns the default locale. The fields in the main schema are
     considered to be in this locale.
 
+  * `__trans__(:associations)` - Returns the fields that hold related records, which
+    `translate/2` translates too. For an Ecto schema these are its associations and
+    embeds. A module that defines `__trans__/1` itself, such as one built by a data layer
+    other than Ecto, answers with its own list.
+
   """
 
   @typedoc """
@@ -195,6 +200,9 @@ defmodule Localize.Translate do
 
       @spec __trans__(:store_options) :: keyword()
       def __trans__(:store_options), do: @trans_store_options
+
+      @spec __trans__(:associations) :: [atom()]
+      def __trans__(:associations), do: Localize.Translate.__associations__(__MODULE__)
     end
   end
 
@@ -758,25 +766,46 @@ defmodule Localize.Translate do
     end)
   end
 
+  # Only a related value that is itself translatable is translated. Anything else (an
+  # unloaded marker of any data layer, `nil`, a plain map, a struct that does not use
+  # `Localize.Translate`) is left as it is, so no data layer's types need naming here.
   defp translate_assocs(%{__struct__: module} = struct, locale) do
-    associations = module.__schema__(:associations)
-    embeds = module.__schema__(:embeds)
-
-    Enum.reduce(associations ++ embeds, struct, fn assoc_name, struct ->
-      Map.update(struct, assoc_name, nil, fn
-        %Ecto.Association.NotLoaded{} = item ->
-          item
-
-        items when is_list(items) ->
-          Enum.map(items, &translate(&1, locale))
-
-        %{} = item ->
-          translate(item, locale)
-
-        item ->
-          item
-      end)
+    module.__trans__(:associations)
+    |> Enum.filter(&Map.has_key?(struct, &1))
+    |> Enum.reduce(struct, fn field, struct ->
+      Map.update!(struct, field, &translate_related(&1, locale))
     end)
+  end
+
+  defp translate_related(items, locale) when is_list(items) do
+    Enum.map(items, &translate_related(&1, locale))
+  end
+
+  defp translate_related(%{__struct__: module} = item, locale) do
+    if translatable_module?(module) do
+      do_translate(item, locale)
+    else
+      item
+    end
+  end
+
+  defp translate_related(item, _locale) do
+    item
+  end
+
+  defp translatable_module?(module) do
+    Code.ensure_loaded?(module) and function_exported?(module, :__trans__, 1)
+  end
+
+  @doc false
+  # The default for `__trans__(:associations)`: an Ecto schema's associations and
+  # embeds, or none for a module that is not an Ecto schema.
+  def __associations__(module) do
+    if function_exported?(module, :__schema__, 1) do
+      module.__schema__(:associations) ++ module.__schema__(:embeds)
+    else
+      []
+    end
   end
 
   defp no_translation_error(field, locales) when is_list(locales) do

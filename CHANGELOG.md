@@ -2,7 +2,13 @@
 
 ## [v0.4.0] — Unreleased
 
+### Added
+
+* `__trans__(:associations)` names the fields holding related records that `translate/2` also translates: an Ecto schema's associations and embeds by default, or a list of its own from a module that defines `__trans__/1` itself.
+
 ### Fixed
+
+* `translate/2` no longer raises on a struct that is not an Ecto schema, or on a related value that is a plain map; it translates only related values that are themselves translatable structs.
 
 * `translate/2,3` and `QueryBuilder.translated/3` no longer raise on an invalid locale, `nil` included: it is left out of the fallback chain, so the base value is returned. `translate!/3` still raises `Localize.InvalidLocaleError`.
 

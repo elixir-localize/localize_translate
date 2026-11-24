@@ -154,6 +154,7 @@ MyApp.Article.__trans__(:fields)         #=> [:title, :body]
 MyApp.Article.__trans__(:locales)        #=> [:en, :es, :fr]
 MyApp.Article.__trans__(:default_locale) #=> :en
 MyApp.Article.__trans__(:container)      #=> :translations
+MyApp.Article.__trans__(:associations)   #=> [:translations]
 ```
 
 These are used internally by `translate/2,3` and `QueryBuilder`, but they're public — feel free to drive UI off them (e.g. iterate the locale list to render input fields).
@@ -216,7 +217,7 @@ translate!(article, :title, :de)
 #=> ** (RuntimeError) translation doesn't exist for field ':title' in locale :de
 ```
 
-`translate/2` (whole struct) is recursive: it traverses associations and embeds, translating every translatable child it finds. Unloaded associations (`%Ecto.Association.NotLoaded{}`) are left alone, so it's safe to call before `Repo.preload/2`.
+`translate/2` (whole struct) is recursive: it traverses the fields `__trans__(:associations)` names (an Ecto schema's associations and embeds), translating every child that is itself translatable. Anything else is left alone, including unloaded associations (`%Ecto.Association.NotLoaded{}`), so it's safe to call before `Repo.preload/2`.
 
 ### Where does the "current locale" come from?
 
