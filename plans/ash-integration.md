@@ -24,14 +24,14 @@ A proposal for using `Localize.Translate` with Ash resources, prompted by mishka
 
 ## Proposal
 
-An Ash extension, `Localize.Translate.Ash`, in a package of its own, `localize_translate_ash`, which depends on `localize_translate` and `ash`. The core keeps no Ash or Spark dependency, and its CI and dependency tree stay as they are.
+An Ash extension, `AshLocalizeTranslate`, in a package of its own, `ash_localize_translate`, which depends on `localize_translate` and `ash`. The core keeps no Ash or Spark dependency, and its CI and dependency tree stay as they are.
 
 ```elixir
 defmodule MyApp.Media do
   use Ash.Resource,
     domain: MyApp.Runtime,
     data_layer: AshPostgres.DataLayer,
-    extensions: [Localize.Translate.Ash]
+    extensions: [AshLocalizeTranslate]
 
   translations do
     translates [:name, :description]
@@ -49,7 +49,7 @@ end
 
 ### Storage: one map attribute, not a resource per locale
 
-The extension adds a `:translations` attribute of a new type, `Localize.Translate.Ash.Type.Translations`, stored as `jsonb` in the shape `Store.Embedded` already reads: `%{"es" => %{"name" => "Foto"}}`.
+The extension adds a `:translations` attribute of a new type, `AshLocalizeTranslate.Type.Translations`, stored as `jsonb` in the shape `Store.Embedded` already reads: `%{"es" => %{"name" => "Foto"}}`.
 
 * **Runtime locales need a map.** A field per locale cannot be generated for languages a site adds after compilation.
 
@@ -83,9 +83,9 @@ MyApp.Media
 
 A whole-map update replaces every locale, so the extension provides changes that touch one locale at a time:
 
-* **`Localize.Translate.Ash.Changes.PutTranslation`** sets the fields given for one locale and keeps the others.
+* **`AshLocalizeTranslate.Changes.PutTranslation`** sets the fields given for one locale and keeps the others.
 
-* **`Localize.Translate.Ash.Changes.RemoveTranslation`** removes one locale.
+* **`AshLocalizeTranslate.Changes.RemoveTranslation`** removes one locale.
 
 Each validates the locale against the `locales` option, when one is given, and implements `atomic/3` as a `jsonb` merge so it works in Ash's atomic updates.
 
@@ -135,11 +135,13 @@ Run 2026-11-24 against Ash 3.38.0, AshPostgres 2.16 and Spark 2.7.10, in a throw
 
 ## Decisions
 
+* 2026-11-24 — The package is `ash_localize_translate`, with the root module `AshLocalizeTranslate` (user). Its project exists as a sibling checkout; work on it starts only when the `localize_translate` fixes are finished.
+
 * 2026-11-24 — `QueryBuilder` walks the chain with a plain SQL subquery, not the `translate_field` function (user). Because the function took the whole row by a guessed table alias, and a subquery reads columns through Ecto and needs no migration.
 
 * 2026-11-24 — A `nil` field in a translation moves on to the next locale everywhere (user). Because SQL queries, the Ash calculation and ETS already do, so only `translate/3` changes.
 
-* 2026-11-24 — The extension is a separate package, `localize_translate_ash`, not an optional dependency of `localize_translate` (user). Because it keeps Ash and Spark out of the core's dependencies and CI. The core's related-records fix is therefore generic, through `__trans__(:associations)`.
+* 2026-11-24 — The extension is a separate package, `ash_localize_translate`, not an optional dependency of `localize_translate` (user). Because it keeps Ash and Spark out of the core's dependencies and CI. The core's related-records fix is therefore generic, through `__trans__(:associations)`.
 
 * 2026-11-24 — A runtime `:default_locale` goes in the core, for Ecto as well as Ash (user). Every path compares with the resolved default; only when none resolves does it rest on the invariant that the container holds no entry for the default locale.
 
@@ -151,7 +153,7 @@ Run 2026-11-24 against Ash 3.38.0, AshPostgres 2.16 and Spark 2.7.10, in a throw
 
 * [x] **Core fixes** — relationships through `__trans__(:associations)`, a runtime `:default_locale` with the default-locale invariant in both `QueryBuilder` paths and the `translate_field` database function, and no raising on an invalid locale. Each lands and releases in `localize_translate` before the extension needs it. No raising on an invalid locale is done (8f95198): `Locale.expand/2` returns `{:ok, chain}` or `{:error, exception}`, and `Locale.expand_valid/2` leaves invalid locales out, which the calculation can use. `__trans__(:associations)` is done (befe2c2); the extension defines it from the resource's relationships. The runtime default locale is done (uncommitted, 2026-11-24), and fixed a literal-chain bug on the way. All three release together in 0.4.0.
 
-* [ ] **The new package** — `localize_translate_ash` under `~/Development/localize/`, with the house CI matrix, pre-commit hook, `STATUS.md` and `CLAUDE.local.md`; the GitHub repository is the user's to create.
+* [ ] **The new package** — `ash_localize_translate` under `~/Development/localize/` (created by the user as a `mix new` project, 2026-11-24), with the house CI matrix, pre-commit hook, `STATUS.md` and `CLAUDE.local.md`.
 
 * [ ] **The type and the extension** — `Type.Translations`, the `translations` section, the attribute, `__trans__/1` and the calculations.
 
