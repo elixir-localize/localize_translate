@@ -87,17 +87,9 @@ def change do
 end
 ```
 
-### Generate the `translate_field` SQL function
+No database function is needed: queries walk the locale chain in plain SQL (see Step 6). Releases before 0.4.0 needed a `translate_field` function created by `mix localize.translate.gen.translate_function`; a database that has it can keep it or drop it.
 
-For query-time locale fallback (covered later), `Localize.Translate.QueryBuilder` calls a PostgreSQL function that walks a list of locales and returns the first non-null translation. Generate the migration with the bundled task:
-
-```bash
-mix localize.translate.gen.translate_function
-```
-
-This writes a migration that creates `public.translate_field(record, container, field, default_locale, locales)` and its sibling that returns the whole JSON for a locale. The function is `STRICT` and `STABLE`, so the planner is free to push it down or cache results within a row.
-
-Run both migrations:
+Run the migration:
 
 ```bash
 mix ecto.migrate
@@ -245,7 +237,9 @@ Then call `Localize.Translate.translate(article, :title, MyAppWeb.Locale.current
 
 `Localize.Translate.QueryBuilder.translated/4` builds an `Ecto.Query` fragment that returns the right value for the row, locale, and fallback chain — entirely in SQL. It handles three cases distinctly:
 
-**Single static locale on a field:**
+Whether the locale is a literal or a runtime value, the query is built the same way. The locale is expanded through the CLDR parent chain, validated and filtered to the schema's `:locales` when the query runs, and the resulting array is walked by a subquery that reads the row's columns through Ecto. Any binding name, join or subquery works, and no database function is involved.
+
+**A field:**
 
 ```elixir
 import Localize.Translate.QueryBuilder
@@ -255,59 +249,46 @@ from a in Article,
   where: translated(Article, a.title, :fr) == "Elixir"
 ```
 
-Compiles to:
+Compiles to (parameters shown inline):
 
 ```sql
 WHERE COALESCE(
-  CASE WHEN 'fr' = 'en' THEN a0."title" ELSE a0."translations"->'fr'->>'title' END,
+  (SELECT CASE WHEN lt_chain.locale = lt_default.locale
+               THEN a0."title"
+               ELSE a0."translations"->lt_chain.locale->>'title' END
+     FROM unnest(ARRAY['fr']) WITH ORDINALITY AS lt_chain(locale, position)
+     CROSS JOIN (SELECT 'en' AS locale) AS lt_default
+    WHERE lt_chain.locale = lt_default.locale
+       OR a0."translations"->lt_chain.locale->>'title' IS NOT NULL
+    ORDER BY lt_chain.position LIMIT 1),
   a0."title"
 ) = 'Elixir'
 ```
 
-The locales are passed as query parameters; they are shown inline here. The `CASE` reads the base column when the locale is the default locale, which is compared when the query runs, since it can come from a function (see "A default locale known only at runtime" below). The COALESCE makes the base column the implicit fallback, so articles with no French translation are still matched if their default `title` happens to equal "Elixir".
+The subquery takes the first locale in the chain that is the default locale, whose value is the base column, or that holds a non-null translation. The COALESCE makes the base column the final fallback, so articles with no French translation are still matched if their default `title` happens to equal "Elixir". A translation that is `nil` counts as missing, so the chain moves on to the next locale.
 
-**Static locale on the whole record (whole-row presence check):**
+**The whole record (presence check):**
 
 ```elixir
 from a in Article,
   where: not is_nil(translated(Article, a, :es))
 ```
 
-Compiles to:
+This is the first locale in the chain whose translations are present, or `NULL`. A structured translation stores a missing locale as JSON `null`, which counts as absent, so plain `is_nil/1` works whether the JSONB was `{}` or `{"es": null}`.
 
-```sql
-WHERE NOT (NULLIF((a0."translations"->'es'), 'null') IS NULL)
-```
-
-`NULLIF((...->'es'), 'null')` is the idiom for "treat JSON null and missing-key both as SQL NULL." It lets you use plain `is_nil/1` in `where:` regardless of whether the JSONB was `{}` or `{"es": null}`.
-
-**Static fallback chain:**
+**A fallback chain, literal or at runtime:**
 
 ```elixir
 from a in Article,
   where: not is_nil(translated(Article, a.title, [:de, :es]))
-```
 
-Compiles to a `COALESCE(...)` of one `CASE` per locale, then the base column. The first locale with a translation wins; the default locale, wherever it sits in the chain, ends it at the base column.
-
-**Dynamic (runtime) locale or chain:**
-
-```elixir
 locale = MyAppWeb.Locale.current()
 
 from a in Article,
   where: translated(Article, a.title, locale) == ^needle
 ```
 
-Because the locale is no longer a compile-time literal, `QueryBuilder` falls back to the `translate_field` SQL function. The function loops through the supplied locale array at row-evaluation time:
-
-```sql
-WHERE translate_field(a0, 'translations'::varchar, 'title'::varchar, $1::varchar, $2::varchar[]) = $3
-```
-
-`$1` is the default locale, resolved when the query is built, or an empty string when there is none.
-
-This is why the migration in Step 2 is important — without it, dynamic-locale queries will error at runtime.
+Both produce the SQL above with a longer locale array. A locale that is not valid, `nil` included, is left out of the array, so a locale taken from a request never raises.
 
 ### A default locale known only at runtime
 
@@ -562,7 +543,7 @@ from a in Article,
   where: translated(Article, a.title, tag) == ^needle
 ```
 
-The locale arg here is a runtime variable, so the macro generates a call to the `translate_field` SQL function. At call time, the tag is expanded to `[:"es-419", :es]`, filtered against the schema's declared `[:en, :es, :fr]`, and only `:es` reaches SQL — keeping the locale array passed to the database minimal.
+When the query is built, the tag is expanded to `[:"es-419", :es]`, filtered against the schema's declared `[:en, :es, :fr]`, and only `:es` reaches SQL, which keeps the locale array passed to the database minimal. A literal `:"es-419"` is expanded the same way.
 
 ### Trade-off
 

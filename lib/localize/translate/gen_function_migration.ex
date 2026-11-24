@@ -6,11 +6,14 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
     import Mix.Ecto, except: [migrations_path: 1]
     import Macro, only: [camelize: 1, underscore: 1]
 
-    @shortdoc "Generates an Ecto migration to create the translate_field database function"
+    @shortdoc "Generates a migration for the translate_field function, which is no longer needed"
 
     @moduledoc """
     Generates a migration to add a database function `translate_field` that uses the
     `Localize.Translate` structured translation schema to resolve a translation for a field.
+
+    Since 0.4.0 `Localize.Translate.QueryBuilder` no longer calls this function, so a new
+    application does not need it. A database that already has it can keep it or drop it.
 
     """
 

@@ -8,7 +8,13 @@
 
 * `__trans__(:associations)` names the fields holding related records that `translate/2` also translates: an Ecto schema's associations and embeds by default, or a list of its own from a module that defines `__trans__/1` itself.
 
+### Changed
+
+* `QueryBuilder` no longer needs the `translate_field` database function: every query walks the locale chain with a plain SQL subquery, so new applications skip `mix localize.translate.gen.translate_function`. A database that has the function can keep it or drop it.
+
 ### Fixed
+
+* A runtime-locale query works with any binding name and on joined schemas; it guessed the table alias from the binding name, so `from b in Book` (alias `a0`) failed. A literal locale is now expanded and validated as a runtime one is, so `:"es-419"` reads `:es`.
 
 * `QueryBuilder.translated/3` with a literal chain such as `[:it, :es]` returned the base column when the first locale had no translation; it now moves on, as a runtime chain and `translate/3` do.
 

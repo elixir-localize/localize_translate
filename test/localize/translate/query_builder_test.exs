@@ -128,7 +128,7 @@ defmodule Localize.Translate.QueryBuilderTest do
         from(
           a in Book,
           where:
-            not is_nil(translated(Book, a0.title, Localize.Translate.Factory.locales([:it, :es]))),
+            not is_nil(translated(Book, a.title, Localize.Translate.Factory.locales([:it, :es]))),
           select: count(a.id)
         )
       )
@@ -422,6 +422,102 @@ defmodule Localize.Translate.QueryBuilderTest do
       )
 
     assert Enum.any?(articles)
+  end
+
+  describe "with any binding name, joins and literal locales" do
+    test "a binding not named after the table works with literal and runtime locales" do
+      book = insert(:book)
+      id = book.id
+      locale = :es
+
+      literal =
+        Repo.one(from(b in Book, where: b.id == ^id, select: translated(Book, b.title, :es)))
+
+      runtime =
+        Repo.one(from(b in Book, where: b.id == ^id, select: translated(Book, b.title, locale)))
+
+      whole = Repo.one(from(b in Book, where: b.id == ^id, select: translated(Book, b, locale)))
+
+      assert literal == book.translations.es.title
+      assert runtime == book.translations.es.title
+      assert whole["title"] == book.translations.es.title
+    end
+
+    test "a joined schema is translated alongside the first",
+         %{translated_article: article} do
+      id = article.id
+      locale = :fr
+
+      rows =
+        Repo.all(
+          from(c in Comment,
+            join: a in Article,
+            on: c.article_id == a.id,
+            where: a.id == ^id,
+            select: {translated(Comment, c.comment, locale), translated(Article, a.title, locale)}
+          )
+        )
+
+      comments = Repo.all(from(c in Comment, where: c.article_id == ^id))
+
+      assert length(rows) == 2
+
+      for comment <- comments do
+        assert {comment.transcriptions["fr"]["comment"], article.translations.fr.title} in rows
+      end
+    end
+
+    test "a literal locale walks the CLDR parent chain", %{translated_article: article} do
+      id = article.id
+
+      title =
+        Repo.one(
+          from(a in Article, where: a.id == ^id, select: translated(Article, a.title, :"es-419"))
+        )
+
+      assert title == article.translations.es.title
+    end
+
+    test "a literal locale that is not valid falls back to the base column",
+         %{translated_article: article} do
+      id = article.id
+
+      title =
+        Repo.one(
+          from(a in Article,
+            where: a.id == ^id,
+            select: translated(Article, a.title, ["not a locale", :fr])
+          )
+        )
+
+      assert title == article.translations.fr.title
+    end
+
+    test "a nil field moves on to the next locale" do
+      %{id: id} =
+        Repo.insert!(%Comment{
+          comment: "English",
+          transcriptions: %{"es" => %{"comment" => nil}, "fr" => %{"comment" => "French"}}
+        })
+
+      locales = [:es, :fr]
+
+      literal =
+        Repo.one(
+          from(c in Comment,
+            where: c.id == ^id,
+            select: translated(Comment, c.comment, [:es, :fr])
+          )
+        )
+
+      runtime =
+        Repo.one(
+          from(c in Comment, where: c.id == ^id, select: translated(Comment, c.comment, locales))
+        )
+
+      assert literal == "French"
+      assert runtime == "French"
+    end
   end
 
   describe "with an invalid runtime locale" do

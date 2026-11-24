@@ -83,17 +83,9 @@ defmodule MyApp.Repo.Migrations.AddTranslationsToArticles do
 end
 ```
 
-### Generate the database function migration
-
-`localize_translate` defines a Postgres function that translates a field in the database. A mix task generates the migration that defines it.
-
-```bash
-mix localize.translate.gen.translate_function
-```
-
 ### Run the migrations
 
-Migrate the database to add the translations column and define the database function.
+Migrate the database to add the translations column. No database function is needed; queries walk the locale chain in plain SQL.
 
 ```bash
 mix ecto.migrate
