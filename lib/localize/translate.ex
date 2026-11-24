@@ -543,11 +543,24 @@ defmodule Localize.Translate do
 
   ### Returns
 
-  * The translated struct.
+  * The translated struct. A value that is not a struct using `Localize.Translate` is
+    returned unchanged.
+
+  ### Examples
+
+      iex> comment = %Localize.Translate.Comment{
+      ...>   comment: "Hello",
+      ...>   transcriptions: %{"fr" => %{"comment" => "Bonjour"}}
+      ...> }
+      iex> Localize.put_locale(:fr)
+      iex> Localize.Translate.translate(comment).comment
+      "Bonjour"
 
   """
   @spec translate(translatable()) :: translatable()
-  def translate(translatable), do: translate(translatable, default_locale_for(translatable))
+  def translate(translatable) do
+    translate(translatable, default_locale_for(translatable))
+  end
 
   @doc """
   Translates a whole struct (or a single field) into the given locale.
@@ -578,7 +591,7 @@ defmodule Localize.Translate do
 
   * The translated struct, or the translated value of a single field. A locale that is
     not valid is left out of the chain, so the struct is returned untranslated when no
-    valid locale is left.
+    valid locale is left. A value that is not a struct is returned unchanged.
 
   ### Examples
 
@@ -591,11 +604,15 @@ defmodule Localize.Translate do
   """
   @spec translate(translatable(), locale_list() | field() | struct()) ::
           translatable() | any()
-  def translate(translatable, locale_or_field) do
+  def translate(%{__struct__: _module} = translatable, locale_or_field) do
     case classify_locale_or_field(translatable, locale_or_field) do
       {:field, field} -> translate(translatable, field, default_locale_for(translatable))
       {:locale, chain} -> do_translate(translatable, chain)
     end
+  end
+
+  def translate(other, _locale_or_field) do
+    other
   end
 
   defp do_translate(%{__struct__: module} = translatable, locale) do
@@ -621,7 +638,7 @@ defmodule Localize.Translate do
 
   * `translatable` is a struct that uses `Localize.Translate`.
 
-  * `field` is the name of the translatable field as an atom.
+  * `field` is the name of the translatable field as an atom or a string.
 
   * `locale` is either a single locale or a list of locales acting as a fallback chain.
 
@@ -631,6 +648,10 @@ defmodule Localize.Translate do
     for any locale in the chain. A `nil` translation counts as missing, so the chain moves
     on to its next locale. A locale that is not valid, including `nil`, is left out of the
     chain rather than raised on, so a locale taken from a request is safe to pass.
+
+  * The base value of a field that is not declared translatable, or `nil` for a field the
+    struct does not have or a value that is not a struct. A string field name never
+    creates an atom.
 
   ### Examples
 
@@ -643,21 +664,21 @@ defmodule Localize.Translate do
       # Fallback chain
       Localize.Translate.translate(article, :title, [:de, :es])
 
-  Raises if the field isn't declared as translatable:
-
-      Localize.Translate.translate(article, :fake_attr, :es)
-      ** (RuntimeError) 'Article' module must declare 'fake_attr' as translatable
+      # A field that is not translatable is its base value
+      Localize.Translate.translate(article, :id, :es)
 
   """
-  @spec translate(translatable(), field(), locale_list() | struct()) :: any()
-  def translate(%{__struct__: module} = translatable, field, locale) when is_atom(field) do
+  @spec translate(translatable(), field() | String.t(), locale_list() | struct()) :: any()
+  def translate(translatable, field, locale) do
+    case translatable_field(translatable, field) do
+      {:ok, field} -> translate_translatable(translatable, field, locale)
+      :error -> base_value(translatable, field)
+    end
+  end
+
+  defp translate_translatable(translatable, field, locale) do
     chain = expand_locale(locale)
     default_locale = default_locale(translatable)
-
-    unless translatable?(translatable, field) do
-      raise not_translatable_error(module, field)
-    end
-
     translatable = load_translations(translatable)
 
     case translate_field(translatable, chain, field, default_locale) do
@@ -678,7 +699,7 @@ defmodule Localize.Translate do
 
   * `translatable` is a struct that uses `Localize.Translate`.
 
-  * `field` is the name of the translatable field as an atom.
+  * `field` is the name of the translatable field as an atom or a string.
 
   * `locale` is either a single locale or a list of locales acting as a fallback chain.
 
@@ -689,6 +710,9 @@ defmodule Localize.Translate do
   * Raises a `RuntimeError` if no translation exists for any locale in the chain. A `nil`
     translation counts as missing.
 
+  * Raises an `ArgumentError` if `translatable` is not a struct that uses
+    `Localize.Translate` or `field` is not one of its translatable fields.
+
   * Raises a `Localize.InvalidLocaleError` if any locale in the chain is not valid,
     including `nil`.
 
@@ -698,19 +722,69 @@ defmodule Localize.Translate do
       ** (RuntimeError) translation doesn't exist for field ':title' in locale :de
 
   """
-  @spec translate!(translatable(), field(), locale_list() | struct()) :: any()
-  def translate!(%{__struct__: module} = translatable, field, locale) when is_atom(field) do
+  @spec translate!(translatable(), field() | String.t(), locale_list() | struct()) :: any()
+  def translate!(translatable, field, locale) do
+    case translatable_field(translatable, field) do
+      {:ok, field} -> translate_translatable!(translatable, field, locale)
+      :error -> raise ArgumentError, not_translatable_error(translatable, field)
+    end
+  end
+
+  defp translate_translatable!(translatable, field, locale) do
     chain = expand_locale!(locale)
     default_locale = default_locale(translatable)
-
-    unless translatable?(translatable, field) do
-      raise not_translatable_error(module, field)
-    end
+    translatable = load_translations(translatable)
 
     case translate_field(translatable, chain, field, default_locale) do
       :error -> raise no_translation_error(field, locale)
       translation -> translation
     end
+  end
+
+  # A translatable field of a struct that uses `Localize.Translate`, as an atom. A string
+  # is matched against the declared field names, so it never creates an atom.
+  defp translatable_field(%{__struct__: module}, field) when is_atom(field) or is_binary(field) do
+    module
+    |> translatable_fields()
+    |> Enum.find(&(&1 == field or Atom.to_string(&1) == field))
+    |> found_field()
+  end
+
+  defp translatable_field(_translatable, _field) do
+    :error
+  end
+
+  defp found_field(nil) do
+    :error
+  end
+
+  defp found_field(field) do
+    {:ok, field}
+  end
+
+  # The base value of a field that is not translatable: the struct's own value for a key
+  # it defines, matched by string for a string name, and `nil` otherwise.
+  defp base_value(%{__struct__: _module} = struct, field) do
+    struct
+    |> Map.from_struct()
+    |> Enum.find_value(fn {key, value} ->
+      if key == field or Atom.to_string(key) == field do
+        {:ok, value}
+      end
+    end)
+    |> found_value()
+  end
+
+  defp base_value(_other, _field) do
+    nil
+  end
+
+  defp found_value({:ok, value}) do
+    value
+  end
+
+  defp found_value(nil) do
+    nil
   end
 
   @doc """
@@ -915,8 +989,12 @@ defmodule Localize.Translate do
     "translation doesn't exist for field '#{inspect(field)}' in locale #{inspect(locale)}"
   end
 
-  defp not_translatable_error(module, field) do
-    "'#{inspect(module)}' module must declare '#{inspect(field)}' as translatable"
+  defp not_translatable_error(%{__struct__: module}, field) do
+    "#{inspect(module)} does not declare #{inspect(field)} as translatable"
+  end
+
+  defp not_translatable_error(other, _field) do
+    "expected a struct that uses Localize.Translate, got: #{inspect(other)}"
   end
 
   @doc false

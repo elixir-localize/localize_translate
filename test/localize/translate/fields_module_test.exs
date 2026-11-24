@@ -107,9 +107,11 @@ defmodule Localize.Translate.FieldsModuleTest do
       assert Translate.translate(flyer(), :title, :en) == "English title"
     end
 
-    test "a field that is not translatable is refused, though the fields schema has it" do
-      assert_raise RuntimeError, ~r/must declare ':translated_by' as translatable/, fn ->
-        Translate.translate(flyer(), :translated_by, :es)
+    test "a field that is not translatable is not translated, though the fields schema has it" do
+      assert is_nil(Translate.translate(flyer(), :translated_by, :es))
+
+      assert_raise ArgumentError, ~r/does not declare :translated_by as translatable/, fn ->
+        Translate.translate!(flyer(), :translated_by, :es)
       end
     end
 

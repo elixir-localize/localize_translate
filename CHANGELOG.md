@@ -10,11 +10,17 @@
 
 ### Changed
 
+* `translate/3` returns the base value for a field that is not translatable, and `nil` for a field the struct lacks or a value that is not a struct, where it raised; `translate!/3` raises an `ArgumentError` for these instead of a `RuntimeError`. Both take a string field name without creating an atom.
+
 * A `nil` translation counts as missing in `translate/2,3`, so a chain moves on to its next locale where it stopped at the base value, and `translate!/3` raises for it. Queries apply the same rule, including a `nil` base value at the default locale.
 
 * `QueryBuilder` no longer needs the `translate_field` database function: every query walks the locale chain with a plain SQL subquery, so new applications skip `mix localize.translate.gen.translate_function`. A database that has the function can keep it or drop it.
 
 ### Fixed
+
+* `translate!/3` loads translations before resolving, as `translate/3` does, so it works with `Store.SiblingResource`; it raised "translation doesn't exist" for every locale.
+
+* `translate/1,2` return a value that is not a struct unchanged, where they raised `FunctionClauseError`.
 
 * `Store.SiblingResource.load_translations/2` checks its options and the subject's key before querying and returns `{:error, %ArgumentError{}}` for each problem, instead of raising and rescuing; only the repo call is rescued, returning the database error.
 

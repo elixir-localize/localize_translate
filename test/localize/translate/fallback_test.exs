@@ -72,12 +72,55 @@ defmodule Localize.Translate.FallbackTest do
     end
   end
 
-  describe "translate/3 with a non-translatable field" do
-    test "raises naming the module and the field" do
+  describe "translate/3 with a field that is not translatable" do
+    test "returns the base value" do
+      article = %{build(:article) | id: 42}
+
+      assert Translate.translate(article, :id, :es) == 42
+      assert Translate.translate(article, "id", :es) == 42
+    end
+
+    test "returns nil for a field the struct does not have" do
       article = build(:article)
 
-      assert_raise RuntimeError, ~r/must declare .* as translatable/, fn ->
-        Translate.translate(article, :id, :es)
+      assert is_nil(Translate.translate(article, :no_such_field, :es))
+      assert is_nil(Translate.translate(article, "no_such_field", :es))
+      assert is_nil(Translate.translate(article, :__struct__, :es))
+      assert is_nil(Translate.translate(article, 42, :es))
+    end
+
+    test "translates a field given as a string" do
+      article = build(:article)
+
+      assert Translate.translate(article, "title", :es) == article.translations.es.title
+    end
+
+    test "never creates an atom from a string field" do
+      field = "definitely_not_an_existing_atom_#{System.unique_integer([:positive])}"
+
+      assert is_nil(Translate.translate(build(:article), field, :es))
+
+      assert_raise ArgumentError, fn ->
+        String.to_existing_atom(field)
+      end
+    end
+
+    test "returns the base value for a struct that does not use Localize.Translate" do
+      assert Translate.translate(URI.parse("https://example.com"), :host, :es) == "example.com"
+    end
+  end
+
+  describe "translate/1,2,3 with a value that is not a struct" do
+    test "translate/1 and translate/2 return it unchanged" do
+      for value <- [nil, "text", 42, %{"title" => "plain map"}, [1, 2]] do
+        assert Translate.translate(value) == value
+        assert Translate.translate(value, :es) == value
+      end
+    end
+
+    test "translate/3 returns nil" do
+      for value <- [nil, "text", 42, %{title: "plain map"}, [1, 2]] do
+        assert is_nil(Translate.translate(value, :title, :es)), inspect(value)
       end
     end
   end
@@ -167,12 +210,28 @@ defmodule Localize.Translate.FallbackTest do
       end
     end
 
-    test "raises for a non-translatable field" do
+    test "raises an ArgumentError for a field that is not translatable" do
       article = build(:article)
 
-      assert_raise RuntimeError, ~r/must declare .* as translatable/, fn ->
-        Translate.translate!(article, :id, :es)
+      for field <- [:id, "id", :no_such_field, 42] do
+        assert_raise ArgumentError, ~r/does not declare .* as translatable/, fn ->
+          Translate.translate!(article, field, :es)
+        end
       end
+    end
+
+    test "raises an ArgumentError for a value that is not a translatable struct" do
+      for value <- [nil, %{title: "plain map"}, URI.parse("https://example.com")] do
+        assert_raise ArgumentError, fn ->
+          Translate.translate!(value, :title, :es)
+        end
+      end
+    end
+
+    test "accepts the field as a string" do
+      article = build(:article)
+
+      assert Translate.translate!(article, "title", :es) == article.translations.es.title
     end
   end
 

@@ -4,8 +4,6 @@ Work planned for `localize_translate`; shipped changes are in the [CHANGELOG](CH
 
 ## Open
 
-* [ ] **`translate/3` and `translate!/3` raise a bare `RuntimeError` for a field that is not translatable** — a programming error rather than request input, but a generic `RuntimeError` is hard to match. Needs a decision: an `ArgumentError`, or the base value. On a struct that does not use `Localize.Translate` they crash with `UndefinedFunctionError` before reaching that check.
-
 * [ ] **Public docs miss template sections** — `translations/1,2` lack `### Returns` (and one clause `### Examples`), `translate/1` and `QueryBuilder.translated_as/4` lack `### Examples`.
 
 * [ ] **House style** — 39 keyword-form `def` clauses (including `mix.exs` and the generated `__trans__/1`), and `opts` for `options` in `using/1` and `__using__/1`.
@@ -19,6 +17,8 @@ Work planned for `localize_translate`; shipped changes are in the [CHANGELOG](CH
 * [ ] **Ash integration** — an Ash extension with a validated translations type, data-layer calculations for filtering and sorting, and runtime per-tenant locales, in a separate package, `ash_localize_translate`; proposal in [plans/ash-integration.md](plans/ash-integration.md). The spike and the three core fixes are done; the new package is next.
 
 ## Done
+
+* [x] **`translate/1,2,3` never raise on bad input** — a field that is not translatable is its base value, a value that is not a struct passes through, and `translate!/3` raises an `ArgumentError`; `translate!/3` also loads sibling-store translations now. 2026-11-24, unreleased (0.4.0).
 
 * [x] **The sibling-resource store validates instead of rescuing** — options and the subject's key are checked up front as tagged errors; only the repo call is rescued. 2026-11-24, unreleased (0.4.0).
 

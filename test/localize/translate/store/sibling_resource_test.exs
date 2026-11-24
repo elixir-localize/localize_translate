@@ -112,6 +112,18 @@ defmodule Localize.Translate.Store.SiblingResourceTest do
     end
   end
 
+  describe "translate!/3 through the store" do
+    test "loads the sibling rows before resolving", %{page: page} do
+      assert Translate.translate!(page, :title, :es) == "Título"
+    end
+
+    test "raises when no sibling row has the locale", %{page: page} do
+      assert_raise RuntimeError, ~r/translation doesn't exist/, fn ->
+        Translate.translate!(page, :title, :de)
+      end
+    end
+  end
+
   describe "translate/2 through the store" do
     test "translates every field of the struct", %{page: page} do
       translated = Translate.translate(page, :es)
