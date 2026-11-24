@@ -2,6 +2,8 @@
 
 ## [v0.4.0] — 2026-11-24
 
+Upgrading from an earlier release? See [Migrating to 0.4](https://hexdocs.pm/localize_translate/migrating_to_0_4.html), which covers the change from the `translate_field` database function to plain SQL and the database housekeeping.
+
 ### Added
 
 * `:default_locale` also takes a `{module, function, arguments}` tuple, called with the struct (or `nil` for a query), for a default known only at runtime. `default_locale/1` resolves it, and `QueryBuilder.translated/4` and `translated_as/4` take a `:default_locale` option.
@@ -24,7 +26,7 @@
 
 * A `nil` translation counts as missing in `translate/2,3`, so a chain moves on to its next locale where it stopped at the base value, and `translate!/3` raises for it. Queries apply the same rule, including a `nil` base value at the default locale.
 
-* `QueryBuilder` no longer needs the `translate_field` database function: every query reads the locale chain in plain SQL, the first four locales as direct `jsonb` expressions, so a `LanguageTag` query runs as fast as a hand-written one and about eight times faster than the function. New applications skip `mix localize.translate.gen.translate_function`.
+* `QueryBuilder` no longer needs the `translate_field` database function: every query reads the locale chain in plain SQL, the first four locales as direct `jsonb` expressions, so a `LanguageTag` query runs as fast as a hand-written one and about twenty-five times faster than the function. New applications skip `mix localize.translate.gen.translate_function`.
 
 ### Deprecated
 

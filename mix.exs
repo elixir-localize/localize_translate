@@ -62,6 +62,7 @@ defmodule Localize.Translate.MixProject do
         "guides/translatable_database_systems.md": [
           title: "Building Translatable Database Systems"
         ],
+        "guides/migrating_to_0_4.md": [title: "Migrating to 0.4"],
         "LICENSE.md": [title: "License"],
         "CHANGELOG.md": [title: "Changelog"]
       ],

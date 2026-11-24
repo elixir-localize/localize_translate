@@ -220,6 +220,8 @@ Both implement `Localize.Translate.Store`, so `translate/2,3` behaves identicall
 
 * **[Building translatable database systems](https://hexdocs.pm/localize_translate/translatable_database_systems.html)** — the design choices and the step-by-step setup, from the migration to forms, queries and tests.
 
+* **[Migrating to 0.4](https://hexdocs.pm/localize_translate/migrating_to_0_4.html)** — upgrading from 0.3 or 0.2: the move from the `translate_field` database function to plain SQL, its performance, the behaviour changes and the database housekeeping.
+
 * **[Changelog](https://hexdocs.pm/localize_translate/changelog.html)** — what changed in each release.
 
 The full documentation is on [HexDocs](https://hexdocs.pm/localize_translate).

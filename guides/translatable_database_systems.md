@@ -87,7 +87,7 @@ def change do
 end
 ```
 
-No database function is needed: queries walk the locale chain in plain SQL (see Step 6). Releases before 0.4.0 needed a `translate_field` function created by `mix localize.translate.gen.translate_function`, which is now deprecated; a database that has the function can keep it or drop it.
+No database function is needed: queries walk the locale chain in plain SQL (see Step 6). Releases before 0.4.0 needed a `translate_field` function created by `mix localize.translate.gen.translate_function`, which is now deprecated; [Migrating to 0.4](migrating_to_0_4.html) shows how to drop it.
 
 Run the migration:
 
