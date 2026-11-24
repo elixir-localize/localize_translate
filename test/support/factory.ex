@@ -5,11 +5,15 @@ defmodule Localize.Translate.Factory do
   @moduledoc false
 
   def build(factory, attributes) do
-    factory |> build() |> struct(attributes)
+    factory
+    |> build()
+    |> struct(attributes)
   end
 
   def insert(factory, attributes \\ []) do
-    factory |> build(attributes) |> Repo.insert!()
+    factory
+    |> build(attributes)
+    |> Repo.insert!()
   end
 
   def build(:article) do

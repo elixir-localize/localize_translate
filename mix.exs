@@ -126,16 +126,35 @@ defmodule Localize.Translate.MixProject do
   end
 
   # Include Ecto and Postgrex applications in tests
-  def app_list(:test), do: [:ecto, :postgrex]
-  def app_list(_), do: app_list()
-  def app_list, do: []
+  def app_list(:test) do
+    [:ecto, :postgrex]
+  end
+
+  def app_list(_) do
+    app_list()
+  end
+
+  def app_list do
+    []
+  end
 
   # Always compile files in "lib". In tests compile also files in
   # "test/support"
-  def elixirc_paths(:test), do: elixirc_paths() ++ ["mix", "test/support"]
-  def elixirc_paths(:dev), do: elixirc_paths() ++ ["mix"]
-  def elixirc_paths(_), do: elixirc_paths()
-  def elixirc_paths, do: ["lib"]
+  def elixirc_paths(:test) do
+    elixirc_paths() ++ ["mix", "test/support"]
+  end
+
+  def elixirc_paths(:dev) do
+    elixirc_paths() ++ ["mix"]
+  end
+
+  def elixirc_paths(_) do
+    elixirc_paths()
+  end
+
+  def elixirc_paths do
+    ["lib"]
+  end
 
   defp aliases do
     [

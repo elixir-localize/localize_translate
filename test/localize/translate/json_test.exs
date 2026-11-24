@@ -52,7 +52,12 @@ defmodule Localize.Translate.JSONTest do
     test "returns iodata that flattens to the same binary as encode!/1" do
       value = %{"title" => "Título"}
 
-      assert value |> JSON.encode_to_iodata!() |> IO.iodata_to_binary() == JSON.encode!(value)
+      encoded =
+        value
+        |> JSON.encode_to_iodata!()
+        |> IO.iodata_to_binary()
+
+      assert encoded == JSON.encode!(value)
     end
   end
 
@@ -81,7 +86,11 @@ defmodule Localize.Translate.JSONTest do
             utc_datetime: ~U[2026-11-23 10:00:00Z],
             decimal: Decimal.new("12.50")
           ] do
-        text = value |> JSON.encode!() |> JSON.decode!()
+        text =
+          value
+          |> JSON.encode!()
+          |> JSON.decode!()
+
         assert Ecto.Type.cast(type, text) == {:ok, value}
       end
     end
@@ -103,7 +112,12 @@ defmodule Localize.Translate.JSONTest do
     test "round-trips a nested structure" do
       value = %{"es" => %{"title" => "Título", "tags" => ["a", "b"], "draft" => false}}
 
-      assert value |> JSON.encode!() |> JSON.decode!() == value
+      round_tripped =
+        value
+        |> JSON.encode!()
+        |> JSON.decode!()
+
+      assert round_tripped == value
     end
   end
 end

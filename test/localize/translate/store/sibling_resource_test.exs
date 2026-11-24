@@ -171,5 +171,7 @@ defmodule Localize.Translate.Store.SiblingResourceTest do
     end
   end
 
-  defp store_options, do: Page.__trans__(:store_options)
+  defp store_options do
+    Page.__trans__(:store_options)
+  end
 end

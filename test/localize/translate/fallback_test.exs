@@ -252,7 +252,10 @@ defmodule Localize.Translate.FallbackTest do
     end
 
     test "leaves an unloaded association untouched" do
-      article = build(:article) |> Map.put(:comments, %Ecto.Association.NotLoaded{})
+      article =
+        :article
+        |> build()
+        |> Map.put(:comments, %Ecto.Association.NotLoaded{})
 
       translated = Translate.translate(article, :es)
 
@@ -285,7 +288,10 @@ defmodule Localize.Translate.FallbackTest do
 
   describe "translate/2 with an association that is neither a struct nor a list" do
     test "leaves a nil association untouched" do
-      article = build(:article) |> Map.put(:comments, nil)
+      article =
+        :article
+        |> build()
+        |> Map.put(:comments, nil)
 
       assert Translate.translate(article, :es).comments == nil
     end

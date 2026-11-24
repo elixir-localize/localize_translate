@@ -54,7 +54,11 @@ defmodule Localize.Translate.JSON do
 
   """
   @spec encode!(term()) :: binary()
-  def encode!(value), do: value |> encode_to_iodata!() |> IO.iodata_to_binary()
+  def encode!(value) do
+    value
+    |> encode_to_iodata!()
+    |> IO.iodata_to_binary()
+  end
 
   @doc """
   Encodes an Elixir term as JSON iodata.
@@ -73,12 +77,16 @@ defmodule Localize.Translate.JSON do
 
   ### Examples
 
-      iex> Localize.Translate.JSON.encode_to_iodata!(%{}) |> IO.iodata_to_binary()
+      iex> %{}
+      ...> |> Localize.Translate.JSON.encode_to_iodata!()
+      ...> |> IO.iodata_to_binary()
       "{}"
 
   """
   @spec encode_to_iodata!(term()) :: iodata()
-  def encode_to_iodata!(value), do: :json.encode(value, &encoder/2)
+  def encode_to_iodata!(value) do
+    :json.encode(value, &encoder/2)
+  end
 
   @doc """
   Decodes a JSON binary into an Elixir term.
@@ -102,17 +110,32 @@ defmodule Localize.Translate.JSON do
 
   """
   @spec decode!(iodata()) :: term()
-  def decode!(value) when is_binary(value), do: do_decode(value)
-  def decode!(value), do: value |> IO.iodata_to_binary() |> do_decode()
+  def decode!(value) when is_binary(value) do
+    do_decode(value)
+  end
+
+  def decode!(value) do
+    value
+    |> IO.iodata_to_binary()
+    |> do_decode()
+  end
 
   defp do_decode(binary) do
     {decoded, :ok, ""} = :json.decode(binary, :ok, %{null: nil})
     decoded
   end
 
-  defp encoder(nil, _encode), do: ~c"null"
-  defp encoder(true, _encode), do: ~c"true"
-  defp encoder(false, _encode), do: ~c"false"
+  defp encoder(nil, _encode) do
+    ~c"null"
+  end
+
+  defp encoder(true, _encode) do
+    ~c"true"
+  end
+
+  defp encoder(false, _encode) do
+    ~c"false"
+  end
 
   defp encoder(%DateTime{} = value, encode) do
     encoder(DateTime.to_iso8601(value), encode)
@@ -135,8 +158,12 @@ defmodule Localize.Translate.JSON do
   end
 
   defp encoder(%_{} = struct, encode) do
-    struct |> Map.from_struct() |> encoder(encode)
+    struct
+    |> Map.from_struct()
+    |> encoder(encode)
   end
 
-  defp encoder(value, encode), do: :json.encode_value(value, encode)
+  defp encoder(value, encode) do
+    :json.encode_value(value, encode)
+  end
 end

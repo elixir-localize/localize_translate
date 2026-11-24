@@ -319,11 +319,21 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
       |> Enum.map(&to_string/1)
     end
 
-    defp schema({{:., _, [schema, _field]}, _metadata, _args}), do: schema
-    defp schema(schema), do: schema
+    defp schema({{:., _, [schema, _field]}, _metadata, _args}) do
+      schema
+    end
 
-    defp field({{:., _, [_schema, field]}, _metadata, _args}), do: field
-    defp field(_), do: nil
+    defp schema(schema) do
+      schema
+    end
+
+    defp field({{:., _, [_schema, field]}, _metadata, _args}) do
+      field
+    end
+
+    defp field(_) do
+      nil
+    end
 
     defp validate_field(module, field) do
       cond do

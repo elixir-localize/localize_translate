@@ -167,7 +167,7 @@ defmodule Localize.Translate do
   @type locale_list :: locale() | [locale(), ...]
 
   @doc false
-  defmacro using(opts) do
+  defmacro using(options) do
     quote do
       import Localize.Translate,
         only: [
@@ -179,45 +179,70 @@ defmodule Localize.Translate do
           trans_store_options: 1
         ]
 
-      Module.put_attribute(__MODULE__, :trans_fields, trans_fields(unquote(opts)))
-      Module.put_attribute(__MODULE__, :trans_container, trans_container(unquote(opts)))
-      Module.put_attribute(__MODULE__, :trans_locales, trans_locales(unquote(opts)))
-      Module.put_attribute(__MODULE__, :trans_default_locale, trans_default_locale(unquote(opts)))
-      Module.put_attribute(__MODULE__, :trans_store, trans_store(unquote(opts)))
-      Module.put_attribute(__MODULE__, :trans_store_options, trans_store_options(unquote(opts)))
+      Module.put_attribute(__MODULE__, :trans_fields, trans_fields(unquote(options)))
+      Module.put_attribute(__MODULE__, :trans_container, trans_container(unquote(options)))
+      Module.put_attribute(__MODULE__, :trans_locales, trans_locales(unquote(options)))
+
+      Module.put_attribute(
+        __MODULE__,
+        :trans_default_locale,
+        trans_default_locale(unquote(options))
+      )
+
+      Module.put_attribute(__MODULE__, :trans_store, trans_store(unquote(options)))
+
+      Module.put_attribute(
+        __MODULE__,
+        :trans_store_options,
+        trans_store_options(unquote(options))
+      )
 
       @after_compile {Localize.Translate, :__validate_translatable_fields__}
       @after_compile {Localize.Translate, :__validate_translation_container__}
 
       @spec __trans__(:fields) :: list(atom)
-      def __trans__(:fields), do: @trans_fields
+      def __trans__(:fields) do
+        @trans_fields
+      end
 
       @spec __trans__(:container) :: atom
-      def __trans__(:container), do: @trans_container
+      def __trans__(:container) do
+        @trans_container
+      end
 
       @spec __trans__(:locales) :: [atom(), ...] | nil
-      def __trans__(:locales), do: @trans_locales
+      def __trans__(:locales) do
+        @trans_locales
+      end
 
       @spec __trans__(:default_locale) ::
               atom() | String.t() | {module(), atom(), list()} | nil
-      def __trans__(:default_locale), do: @trans_default_locale
+      def __trans__(:default_locale) do
+        @trans_default_locale
+      end
 
       @spec __trans__(:store) :: module()
-      def __trans__(:store), do: @trans_store
+      def __trans__(:store) do
+        @trans_store
+      end
 
       @spec __trans__(:store_options) :: keyword()
-      def __trans__(:store_options), do: @trans_store_options
+      def __trans__(:store_options) do
+        @trans_store_options
+      end
 
       @spec __trans__(:associations) :: [atom()]
-      def __trans__(:associations), do: Localize.Translate.__associations__(__MODULE__)
+      def __trans__(:associations) do
+        Localize.Translate.__associations__(__MODULE__)
+      end
     end
   end
 
-  defmacro __using__(opts) do
+  defmacro __using__(options) do
     quote do
       require Localize.Translate
 
-      Localize.Translate.using(unquote(opts))
+      Localize.Translate.using(unquote(options))
       import Localize.Translate, only: :macros
     end
   end
@@ -911,7 +936,9 @@ defmodule Localize.Translate do
   # `translate/N` then expands it through the CLDR parent chain, so a missing
   # translation degrades through parents to the schema's `:default_locale` value
   # in the base columns.
-  defp default_locale_for(_struct), do: Localize.Translate.Locale.current()
+  defp default_locale_for(_struct) do
+    Localize.Translate.Locale.current()
+  end
 
   # A store whose translations do not travel with the subject populates the
   # container in one call here, so resolution below costs no further I/O. Stores

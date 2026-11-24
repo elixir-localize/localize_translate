@@ -36,11 +36,15 @@ defmodule Localize.Translate.Store do
 
         @impl true
         def locales(subject, _options) do
-          :ets.match(:translations, {{subject.id, :"$1", :_}, :_}) |> List.flatten()
+          :translations
+          |> :ets.match({{subject.id, :"$1", :_}, :_})
+          |> List.flatten()
         end
 
         @impl true
-        def queryable?, do: false
+        def queryable? do
+          false
+        end
       end
 
   Select it per schema:

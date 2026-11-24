@@ -26,7 +26,9 @@ defmodule Localize.Translate.Locale do
   the `Localize` alias.
   """
   @spec current() :: LanguageTag.t()
-  def current, do: Localize.get_locale()
+  def current do
+    Localize.get_locale()
+  end
 
   @doc """
   Validates `locale` and returns the canonical `:cldr_locale_id` atom.
@@ -37,7 +39,9 @@ defmodule Localize.Translate.Locale do
   """
   @spec normalise!(input()) :: atom()
   def normalise!(locale) do
-    locale |> validate!() |> Map.fetch!(:cldr_locale_id)
+    locale
+    |> validate!()
+    |> Map.fetch!(:cldr_locale_id)
   end
 
   @doc """
@@ -93,7 +97,9 @@ defmodule Localize.Translate.Locale do
   @spec expand_valid(input() | [input()] | nil, [atom()] | nil) :: [atom()]
   def expand_valid(input, supported \\ nil)
 
-  def expand_valid(nil, _supported), do: []
+  def expand_valid(nil, _supported) do
+    []
+  end
 
   def expand_valid(input, supported) do
     input
@@ -168,7 +174,9 @@ defmodule Localize.Translate.Locale do
 
   # Stop at `und` (the CLDR root) without appending it — querying for `:und`
   # translations is meaningless and only adds noise to the fallback chain.
-  defp walk_parents(%LanguageTag{language: :und}, acc), do: Enum.reverse(acc)
+  defp walk_parents(%LanguageTag{language: :und}, acc) do
+    Enum.reverse(acc)
+  end
 
   defp walk_parents(%LanguageTag{} = tag, acc) do
     case Localize.Locale.parent(tag) do
@@ -189,7 +197,15 @@ defmodule Localize.Translate.Locale do
     end
   end
 
-  defp filter_supported(chain, nil), do: chain
-  defp filter_supported(chain, []), do: chain
-  defp filter_supported(chain, list) when is_list(list), do: Enum.filter(chain, &(&1 in list))
+  defp filter_supported(chain, nil) do
+    chain
+  end
+
+  defp filter_supported(chain, []) do
+    chain
+  end
+
+  defp filter_supported(chain, list) when is_list(list) do
+    Enum.filter(chain, &(&1 in list))
+  end
 end

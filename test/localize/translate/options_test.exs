@@ -56,13 +56,19 @@ defmodule Localize.Translate.OptionsTest do
         @behaviour Localize.Translate.Store
 
         @impl true
-        def fetch_translation(_subject, _locale, _field, _options), do: :error
+        def fetch_translation(_subject, _locale, _field, _options) do
+          :error
+        end
 
         @impl true
-        def locales(_subject, _options), do: []
+        def locales(_subject, _options) do
+          []
+        end
 
         @impl true
-        def queryable?, do: false
+        def queryable? do
+          false
+        end
       end
 
       assert Translate.trans_store(store: CustomStore) == CustomStore

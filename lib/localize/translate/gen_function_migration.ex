@@ -51,8 +51,13 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
       "#{y}#{pad(m)}#{pad(d)}#{pad(hh)}#{pad(mm)}#{pad(ss)}"
     end
 
-    defp pad(i) when i < 10, do: <<?0, ?0 + i>>
-    defp pad(i), do: to_string(i)
+    defp pad(i) when i < 10 do
+      <<?0, ?0 + i>>
+    end
+
+    defp pad(i) do
+      to_string(i)
+    end
 
     # `Code.format_string!/1` returns iodata; flatten it so both branches share
     # one contract and callers get a plain binary.
