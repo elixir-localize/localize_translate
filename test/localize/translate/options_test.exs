@@ -175,9 +175,32 @@ defmodule Localize.Translate.OptionsTest do
       refute Translate.translatable?(Article, "id")
     end
 
-    test "raises for a module that does not use Localize.Translate" do
-      assert_raise RuntimeError, ~r/must use `Localize.Translate`/, fn ->
-        Translate.translatable?(URI, :title)
+    test "is false for a module that does not use Localize.Translate" do
+      refute Translate.translatable?(URI, :host)
+      refute Translate.translatable?(%URI{}, "host")
+      refute Translate.translatable?(:not_a_loaded_module, :title)
+    end
+
+    test "is false for arguments that are not a module and a field name" do
+      for {module, field} <- [
+            {42, :title},
+            {Article, 42},
+            {Article, nil},
+            {Article, ""},
+            {nil, :title},
+            {"Article", :title}
+          ] do
+        refute Translate.translatable?(module, field), inspect({module, field})
+      end
+    end
+
+    test "never creates an atom from a string field" do
+      field = "definitely_not_an_existing_atom_#{System.unique_integer([:positive])}"
+
+      refute Translate.translatable?(Article, field)
+
+      assert_raise ArgumentError, fn ->
+        String.to_existing_atom(field)
       end
     end
   end

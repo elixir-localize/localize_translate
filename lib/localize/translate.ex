@@ -464,8 +464,8 @@ defmodule Localize.Translate do
   @doc """
   Checks whether the given field is translatable or not.
 
-  Returns true if the given field is translatable. Raises if the given module or struct does not
-  use `Localize.Translate`.
+  A string field is compared with the declared field names as strings, so a field name
+  taken from a request never creates an atom.
 
   ### Arguments
 
@@ -478,7 +478,8 @@ defmodule Localize.Translate do
 
   * `true` if the given field is translatable.
 
-  * `false` if the given field is not translatable.
+  * `false` if the given field is not translatable, if the module or struct does not use
+    `Localize.Translate`, or if either argument is not a module or a field name.
 
   ### Examples
 
@@ -487,28 +488,45 @@ defmodule Localize.Translate do
       iex> Localize.Translate.translatable?(Article, :title)
       true
 
+      iex> Localize.Translate.translatable?(Article, "title")
+      true
+
       iex> article = %Article{}
       iex> Localize.Translate.translatable?(article, :not_existing)
       false
 
       iex> Localize.Translate.translatable?(Date, :day)
-      ** (RuntimeError) Elixir.Date must use `Localize.Translate` in order to be translated
+      false
 
   """
+  @spec translatable?(module() | translatable(), String.t() | atom()) :: boolean()
   def translatable?(module_or_translatable, field)
 
-  @spec translatable?(module | translatable(), String.t() | atom) :: boolean
-  def translatable?(%{__struct__: module}, field), do: translatable?(module, field)
+  def translatable?(%{__struct__: module}, field) do
+    translatable?(module, field)
+  end
 
   def translatable?(module, field) when is_atom(module) and is_binary(field) do
-    translatable?(module, String.to_atom(field))
+    module
+    |> translatable_fields()
+    |> Enum.any?(&(Atom.to_string(&1) == field))
   end
 
   def translatable?(module, field) when is_atom(module) and is_atom(field) do
-    if Keyword.has_key?(module.__info__(:functions), :__trans__) do
-      Enum.member?(module.__trans__(:fields), field)
+    module
+    |> translatable_fields()
+    |> Enum.member?(field)
+  end
+
+  def translatable?(_module_or_translatable, _field) do
+    false
+  end
+
+  defp translatable_fields(module) do
+    if translatable_module?(module) do
+      module.__trans__(:fields)
     else
-      raise "#{module} must use `Localize.Translate` in order to be translated"
+      []
     end
   end
 
