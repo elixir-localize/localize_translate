@@ -107,6 +107,12 @@ defmodule Localize.Translate.DefaultLocaleTest do
       assert is_nil(Translate.default_locale(Page))
     end
 
+    test "is nil for a struct or module that does not use Localize.Translate" do
+      for value <- [%URI{}, URI, :not_a_loaded_module, nil, "Comment", 42, %{}] do
+        assert is_nil(Translate.default_locale(value)), inspect(value)
+      end
+    end
+
     test "is nil when the function returns nil or a value that is not a locale" do
       for value <- [nil, "not a locale", "", 42, %{}] do
         assert is_nil(Translate.default_locale(%Page{site_locale: value})), inspect(value)

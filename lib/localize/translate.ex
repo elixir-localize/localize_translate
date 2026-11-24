@@ -868,7 +868,8 @@ defmodule Localize.Translate do
   * The default locale as a CLDR locale id atom, such as `:en` or `:"fr-CA"`, or
 
   * `nil` when the schema has no default locale, or its function returns `nil` or a value
-    that is not a valid locale. With no default locale every locale is looked up in the
+    that is not a valid locale, or when `translatable` is not a struct or module that uses
+    `Localize.Translate`. With no default locale every locale is looked up in the
     translation container, so the base fields must not also have an entry there.
 
   ### Examples
@@ -880,13 +881,21 @@ defmodule Localize.Translate do
       :en
 
   """
-  @spec default_locale(translatable() | module()) :: atom() | nil
+  @spec default_locale(translatable() | module() | term()) :: atom() | nil
   def default_locale(%{__struct__: module} = translatable) do
-    resolve_default_locale(module, translatable)
+    if translatable_module?(module) do
+      resolve_default_locale(module, translatable)
+    end
   end
 
   def default_locale(module) when is_atom(module) do
-    resolve_default_locale(module, nil)
+    if translatable_module?(module) do
+      resolve_default_locale(module, nil)
+    end
+  end
+
+  def default_locale(_other) do
+    nil
   end
 
   @doc """
