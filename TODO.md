@@ -2,15 +2,13 @@
 
 Work planned for `localize_translate`; shipped changes are in the [CHANGELOG](CHANGELOG.md).
 
-## Open
-
-* [ ] **Dialyzer has not run** on the 0.4.0 changes; to run before the release, on request.
-
 ## In progress
 
 * [ ] **Ash integration** — an Ash extension with a validated translations type, data-layer calculations for filtering and sorting, and runtime per-tenant locales, in a separate package, `ash_localize_translate`; proposal in [plans/ash-integration.md](plans/ash-integration.md). The spike and the three core fixes are done; the new package is next.
 
 ## Done
+
+* [x] **Dialyzer on the 0.4.0 changes** — `Total errors: 0` on Elixir 1.20.5 / OTP 29.1.2. 2026-11-24.
 
 * [x] **The `translate_field` generator task is deprecated** — it warns when run and its docs carry the deprecation; removal is for a later release. 2026-11-24, unreleased (0.4.0).
 
