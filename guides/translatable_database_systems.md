@@ -233,7 +233,7 @@ Every other read takes an explicit locale, so code that resolves the locale some
 
 `Localize.Translate.QueryBuilder.translated/4` builds an `Ecto.Query` fragment that returns the right value for the row, locale, and fallback chain — entirely in SQL. It handles three cases distinctly:
 
-Whether the locale is a literal or a runtime value, the query is built the same way. The locale is expanded through the CLDR parent chain, validated and filtered to the schema's `:locales` when the query runs, and the resulting array is walked by a subquery that reads the row's columns through Ecto. Any binding name, join or subquery works, and no database function is involved.
+Whether the locale is a literal, a `Localize.LanguageTag` or any other runtime value, the query is built the same way. The locale is expanded through the CLDR parent chain, validated and filtered to the schema's `:locales` when the query runs, and the resulting array is passed as one parameter. Its first four locales are read with plain expressions, so the query costs about the same as a hand-written `jsonb` expression; a CLDR chain from a single locale is at most three long. A longer chain, such as one built from an `Accept-Language` list, walks the rest with a subquery. The row's columns are read through Ecto, so any binding name, join or subquery works, and no database function is involved.
 
 **A field:**
 
@@ -249,21 +249,16 @@ Compiles to (parameters shown inline):
 
 ```sql
 WHERE COALESCE(
-  (SELECT lt_value.value
-     FROM unnest(ARRAY['fr']) WITH ORDINALITY AS lt_chain(locale, position)
-     CROSS JOIN (SELECT 'en' AS locale) AS lt_default
-     CROSS JOIN LATERAL (
-       SELECT CASE WHEN lt_chain.locale = lt_default.locale
-                   THEN a0."title"
-                   ELSE a0."translations"->lt_chain.locale->>'title' END AS value
-     ) AS lt_value
-    WHERE lt_value.value IS NOT NULL
-    ORDER BY lt_chain.position LIMIT 1),
+  CASE WHEN chain[1] = 'en' THEN a0."title" ELSE a0."translations"->chain[1]->>'title' END,
+  CASE WHEN chain[2] = 'en' THEN a0."title" ELSE a0."translations"->chain[2]->>'title' END,
+  CASE WHEN chain[3] = 'en' THEN a0."title" ELSE a0."translations"->chain[3]->>'title' END,
+  CASE WHEN chain[4] = 'en' THEN a0."title" ELSE a0."translations"->chain[4]->>'title' END,
+  CASE WHEN cardinality(chain) > 4 THEN (... the rest of the chain ...) END,
   a0."title"
 ) = 'Elixir'
 ```
 
-A locale's value is its translation, or the base column for the default locale, and the subquery takes the first locale whose value is not null. The COALESCE makes the base column the final fallback, so articles with no French translation are still matched if their default `title` happens to equal "Elixir". This is the same rule `translate/3` applies in memory.
+Here `chain` stands for the array parameter, `ARRAY['fr']`, and `'en'` is the default locale. A locale's value is its translation, or the base column for the default locale, and `COALESCE` takes the first that is not null; a position past the end of the chain is null and reads nothing. The base column is the final fallback, so articles with no French translation are still matched if their default `title` happens to equal "Elixir". This is the same rule `translate/3` applies in memory.
 
 **The whole record (presence check):**
 
