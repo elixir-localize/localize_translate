@@ -271,6 +271,14 @@ defmodule Localize.Translate do
 
   Any other option raises an `ArgumentError` when the schema compiles.
 
+  ### Returns
+
+  * The quoted `embeds_one/3` declaration for the container field, together with the
+    generated translation schema and, unless `:fields_module` or `build_field_schema: false`
+    is given, its `Fields` schema. One embed is generated per locale, leaving out a literal
+    `:default_locale`; with a function default every locale gets one, since the default is
+    known only at runtime.
+
   ### Examples
 
       defmodule MyApp.Article do
@@ -359,9 +367,36 @@ defmodule Localize.Translate do
   * `translation_module` is the alias name of the generated translation schema.
 
   * `locales` is the explicit list of locale atoms for which translation embeds are
-    generated. The schema's `:default_locale` is excluded.
+    generated. A literal `:default_locale` is left out.
 
-  * `options` is a keyword list of options, the same as accepted by `translations/3`.
+  * `options` is a keyword list of options.
+
+  ### Options
+
+  * `:build_field_schema` and `:fields_module`, as described for `translations/3`.
+
+  ### Returns
+
+  * The quoted `embeds_one/3` declaration for the container field and the generated
+    schemas, as for `translations/3`, with one embed per locale in `locales`.
+
+  ### Examples
+
+      defmodule MyApp.Article do
+        use Ecto.Schema
+        use Localize.Translate,
+          translates: [:title, :body],
+          locales: [:en, :es, :fr],
+          default_locale: :en
+
+        schema "articles" do
+          field :title, :string
+          field :body, :string
+
+          # Only Spanish translations for this schema, whatever :locales says
+          translations :translations, Translations, [:es], []
+        end
+      end
 
   """
   defmacro translations(field_name, translation_module, locales, options) do

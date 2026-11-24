@@ -181,6 +181,16 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
     A `fragment/1` AST that selects the translated value aliased to the original field
     name. See `translated/4` for the underlying SQL produced.
 
+    ### Examples
+
+        # Load each article with its title in French, falling back to the base column
+        from a in Article,
+          select: %{a | title: translated_as(Article, a.title, :fr)}
+
+        # The same, with the default locale of the site being queried
+        from a in Article,
+          select: %{a | title: translated_as(Article, a.title, locale, default_locale: site.locale)}
+
     """
 
     defmacro translated_as(module, translatable, locale, options \\ []) do
