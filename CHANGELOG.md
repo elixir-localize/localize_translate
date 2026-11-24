@@ -6,6 +6,8 @@
 
 * `:default_locale` also takes a `{module, function, arguments}` tuple, called with the struct (or `nil` for a query), for a default known only at runtime. `default_locale/1` resolves it, and `QueryBuilder.translated/4` and `translated_as/4` take a `:default_locale` option.
 
+* `locale_id/1` validates a locale and returns the CLDR locale id translations are keyed by, or an error, for code that stores or reads translations itself.
+
 * `locale_chain/2` expands a locale or list into the CLDR fallback chain the reads walk, leaving out invalid locales, with a `:supported` filter, for code that builds its own lookups such as a data-layer calculation.
 
 * `__trans__(:associations)` names the fields holding related records that `translate/2` also translates: an Ecto schema's associations and embeds by default, or a list of its own from a module that defines `__trans__/1` itself.
@@ -23,6 +25,8 @@
 * `mix localize.translate.gen.translate_function` warns when run and will be removed in a future release, since queries no longer call the `translate_field` function it creates.
 
 ### Fixed
+
+* A language CLDR has no data for, such as `"tlh"`, resolves to the root `und` and is now left out of a chain and refused in `:locales`; every such language was read under the one `"und"` key.
 
 * `translate!/3` loads translations before resolving, as `translate/3` does, so it works with `Store.SiblingResource`; it raised "translation doesn't exist" for every locale.
 

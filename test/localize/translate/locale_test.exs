@@ -22,6 +22,12 @@ defmodule Localize.Translate.LocaleTest do
         Locale.normalise!(:xyzabc)
       end
     end
+
+    test "raises on a language CLDR has no data for" do
+      assert_raise Localize.InvalidLocaleError, fn ->
+        Locale.normalise!(:tlh)
+      end
+    end
   end
 
   describe "current/0" do

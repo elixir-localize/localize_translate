@@ -17,6 +17,9 @@ defmodule Localize.Translate do
 
   * `translatable?/2` reports whether a field is declared as translatable.
 
+  * `locale_id/1` validates a locale and returns the CLDR locale id translations are
+    keyed by.
+
   * `default_locale/1` resolves the locale of a struct's base fields, and `locale_chain/2`
     expands a locale into the CLDR fallback chain the reads walk, for code that builds its
     own lookups, such as a data-layer calculation.
@@ -899,13 +902,53 @@ defmodule Localize.Translate do
   end
 
   @doc """
+  Validates a locale and returns its canonical CLDR locale id, the key translations are
+  stored and read under.
+
+  Atoms, strings and `Localize.LanguageTag` structs are accepted, and converge to the
+  same id: `"fr_CA"`, `:"fr-CA"` and `"fr-CA"` are all `:"fr-CA"`. A language's default
+  region is folded into the language, as CLDR keeps no data of its own for it, so
+  `"en-US"` is `:en`.
+
+  ### Arguments
+
+  * `locale` is a locale: an atom, a string or a `Localize.LanguageTag`.
+
+  ### Returns
+
+  * `{:ok, locale_id}` with the CLDR locale id as an atom, or
+
+  * `{:error, exception}` when `locale` is not a valid locale, is `nil` or empty, or is a
+    language CLDR has no data for, which resolves to the root `und`. Every such
+    language would share that one key, so none is accepted.
+
+  ### Examples
+
+      iex> Localize.Translate.locale_id("fr_CA")
+      {:ok, :"fr-CA"}
+
+      iex> Localize.Translate.locale_id("en-US")
+      {:ok, :en}
+
+      iex> {:error, %Localize.InvalidLocaleError{}} = Localize.Translate.locale_id("tlh")
+      iex> {:error, %Localize.InvalidLocaleError{}} = Localize.Translate.locale_id(nil)
+
+  """
+  @spec locale_id(locale() | Localize.LanguageTag.t() | nil) ::
+          {:ok, atom()} | {:error, Exception.t()}
+  def locale_id(locale) do
+    Localize.Translate.Locale.normalise(locale)
+  end
+
+  @doc """
   Expands a locale, or a list of locales, into the CLDR fallback chain that
   `translate/2,3` and `QueryBuilder.translated/4` walk.
 
   Each locale is validated and followed up its CLDR parent chain, stopping before the root
   (`:"en-AU"` → `:"en-001"` → `:en`). A list is expanded locale by locale and
-  deduplicated in order. A locale that is not valid, `nil` included, is left out, as the
-  reads leave it out, so a locale taken from a request is safe to pass.
+  deduplicated in order. A locale that is not valid, `nil` included, or that resolves to
+  the CLDR root `und` is left out, as the reads leave it out, so a locale taken from a
+  request is safe to pass.
 
   ### Arguments
 

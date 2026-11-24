@@ -138,6 +138,16 @@ defmodule Localize.Translate.FallbackTest do
       end
     end
 
+    test "translate/3 reads the base value for a language CLDR has no data for" do
+      comment = %Comment{
+        comment: "English comment",
+        transcriptions: %{"und" => %{"comment" => "Root"}, "es" => %{"comment" => "Comentario"}}
+      }
+
+      assert Translate.translate(comment, :comment, "tlh") == "English comment"
+      assert Translate.translate(comment, :comment, ["tlh", :es]) == "Comentario"
+    end
+
     test "translate/3 skips an invalid locale in a chain" do
       comment = %Comment{
         comment: "English comment",

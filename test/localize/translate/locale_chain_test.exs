@@ -4,6 +4,43 @@ defmodule Localize.Translate.LocaleChainTest do
   alias Localize.Translate
   alias Localize.Translate.{Article, QueryBuilder}
 
+  describe "locale_id/1" do
+    test "returns the canonical CLDR locale id for an atom, a string or a tag" do
+      {:ok, tag} = Localize.LanguageTag.new("es-419")
+
+      assert Translate.locale_id("fr_CA") == {:ok, :"fr-CA"}
+      assert Translate.locale_id(:"fr-CA") == {:ok, :"fr-CA"}
+      assert Translate.locale_id(tag) == {:ok, :"es-419"}
+    end
+
+    test "folds a language's default region into the language" do
+      assert Translate.locale_id("en-US") == {:ok, :en}
+      assert Translate.locale_id("es_ES") == {:ok, :es}
+    end
+
+    test "refuses a value that is not a locale" do
+      for value <- [nil, "", :"", 42, %{}, "not a locale", [:en]] do
+        assert {:error, %Localize.InvalidLocaleError{}} = Translate.locale_id(value),
+               inspect(value)
+      end
+    end
+
+    test "refuses a language CLDR has no data for, which would resolve to und" do
+      for value <- ["tlh", "qaa", "und", :und] do
+        assert {:error, %Localize.InvalidLocaleError{}} = Translate.locale_id(value),
+               inspect(value)
+      end
+    end
+  end
+
+  describe "locale_chain/2 and the CLDR root" do
+    test "leaves out a locale that resolves to und" do
+      assert Translate.locale_chain("tlh") == []
+      assert Translate.locale_chain(["tlh", :es]) == [:es]
+      assert Translate.locale_chain(:und) == []
+    end
+  end
+
   describe "locale_chain/2" do
     test "walks the CLDR parent chain of a locale given as an atom, a string or a tag" do
       {:ok, tag} = Localize.LanguageTag.new("es-419")

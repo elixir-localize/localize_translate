@@ -39,16 +39,17 @@ defmodule Localize.Translate.Locale do
   """
   @spec normalise!(input()) :: atom()
   def normalise!(locale) do
-    locale
-    |> validate!()
-    |> Map.fetch!(:cldr_locale_id)
+    case normalise(locale) do
+      {:ok, locale_id} -> locale_id
+      {:error, exception} -> raise exception
+    end
   end
 
   @doc """
   Validates `locale` and returns its canonical `:cldr_locale_id` atom.
 
   Returns `{:ok, locale_id}`, or `{:error, exception}` when `locale` (including `nil`) is
-  not a valid locale.
+  not a valid locale or resolves to the CLDR root, `und`.
   """
   @spec normalise(input() | nil) :: {:ok, atom()} | {:error, Exception.t()}
   def normalise(nil) do
@@ -57,9 +58,16 @@ defmodule Localize.Translate.Locale do
 
   def normalise(locale) do
     case Localize.validate_locale(locale) do
+      {:ok, %LanguageTag{cldr_locale_id: :und}} -> no_cldr_data(locale)
       {:ok, tag} -> {:ok, tag.cldr_locale_id}
       {:error, _exception} = error -> error
     end
+  end
+
+  # A locale CLDR has no data for resolves to the root, `und`. Every such locale would
+  # share that one key, so it is not a locale translations can be stored or read under.
+  defp no_cldr_data(locale) do
+    {:error, Localize.InvalidLocaleError.exception(locale_id: inspect(locale))}
   end
 
   @doc """
@@ -158,17 +166,13 @@ defmodule Localize.Translate.Locale do
     {:error, Localize.InvalidLocaleError.exception(locale_id: "nil")}
   end
 
+  # A locale that resolves to the root, `und`, has no CLDR data and contributes nothing
+  # to a chain, as the root itself does not.
   defp expand_one(input) do
     case Localize.validate_locale(input) do
+      {:ok, %LanguageTag{cldr_locale_id: :und}} -> {:ok, []}
       {:ok, tag} -> {:ok, walk_parents(tag, [tag.cldr_locale_id])}
       {:error, _exception} = error -> error
-    end
-  end
-
-  defp validate!(input) do
-    case Localize.validate_locale(input) do
-      {:ok, tag} -> tag
-      {:error, exception} -> raise exception
     end
   end
 
