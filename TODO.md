@@ -4,8 +4,6 @@ Work planned for `localize_translate`; shipped changes are in the [CHANGELOG](CH
 
 ## Open
 
-* [ ] **Own the `__trans__/1` reflection** — `ash_localize_translate` writes the seven clauses by hand, so a key the core adds breaks it at runtime. Provide a public macro that generates the reflection, used by `use Localize.Translate` and by the extension, and document the keys it needs.
-
 * [ ] **Bring the Ash records up to date** — `plans/ash-integration.md` still reads "draft" with finished tasks unticked, the In progress item says the package is next, and the README does not mention `ash_localize_translate`.
 
 * [ ] **A function default locale and Ecto writes** — with a function `:default_locale`, `translations/1` embeds every locale and nothing stops a changeset storing the default locale's text in the container. Offer a changeset validation like `ash_localize_translate`'s.
@@ -15,6 +13,8 @@ Work planned for `localize_translate`; shipped changes are in the [CHANGELOG](CH
 * [ ] **Ash integration** — an Ash extension with a validated translations type, data-layer calculations for filtering and sorting, and runtime per-tenant locales, in a separate package, `ash_localize_translate`; proposal in [plans/ash-integration.md](plans/ash-integration.md). The spike and the three core fixes are done; the new package is next.
 
 ## Done
+
+* [x] **Own the `__trans__/1` reflection** — `reflection/1` generates every clause with defaults and checks its options at compile time; `use Localize.Translate` calls it. 2026-11-24, unreleased (0.4.0).
 
 * [x] **A public locale id** — `locale_id/1`, so `ash_localize_translate` validates locales through the core rather than calling `Localize.validate_locale/1` itself; a language that resolves to `und` is refused and left out of chains. 2026-11-24, unreleased (0.4.0).
 
