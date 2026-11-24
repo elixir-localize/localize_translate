@@ -21,7 +21,9 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
       field access expression (such as `a.title`) for a specific translatable field.
 
     * `locale` is either a single locale (atom or string) or a list of locales acting as a
-      fallback chain. May be a literal, a variable, or a runtime expression.
+      fallback chain. May be a literal, a variable, or a runtime expression. A runtime
+      locale that is not valid, including `nil`, is left out of the chain, so a locale
+      taken from a request never raises while the query is built.
 
     ### Returns
 
@@ -216,7 +218,7 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
     @doc false
     def list_to_sql_array(locales, supported \\ nil) do
       locales
-      |> Localize.Translate.Locale.expand(supported)
+      |> Localize.Translate.Locale.expand_valid(supported)
       |> Enum.map(&to_string/1)
     end
 

@@ -424,6 +424,60 @@ defmodule Localize.Translate.QueryBuilderTest do
     assert Enum.any?(articles)
   end
 
+  describe "with an invalid runtime locale" do
+    test "a field falls back to the base column",
+         %{translated_article: translated_article} do
+      id = translated_article.id
+
+      for locale <- ["not a locale", nil, ""] do
+        rows =
+          Repo.all(
+            from(
+              a in Article,
+              select: translated(Article, a.title, locale),
+              where: a.id == ^id
+            )
+          )
+
+        assert rows == [translated_article.title], inspect(locale)
+      end
+    end
+
+    test "an invalid locale in a chain is skipped",
+         %{translated_article: translated_article} do
+      id = translated_article.id
+      locales = ["not a locale", :es]
+
+      rows =
+        Repo.all(
+          from(
+            a in Article,
+            select: translated(Article, a.title, locales),
+            where: a.id == ^id
+          )
+        )
+
+      assert rows == [translated_article.translations.es.title]
+    end
+
+    test "a whole-locale query finds no translation",
+         %{translated_article: translated_article} do
+      id = translated_article.id
+      locale = "not a locale"
+
+      rows =
+        Repo.all(
+          from(
+            a in Article,
+            select: translated(Article, a, locale),
+            where: a.id == ^id
+          )
+        )
+
+      assert rows == [nil]
+    end
+  end
+
   describe "with LanguageTag and CLDR parent walking" do
     test "translated/3 accepts a LanguageTag and walks the CLDR parent chain",
          %{translated_article: translated_article} do

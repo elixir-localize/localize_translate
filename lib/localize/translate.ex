@@ -29,7 +29,10 @@ defmodule Localize.Translate do
     `%Localize.LanguageTag{}` structs are accepted anywhere a locale is expected — in
     `:locales`, `translate/N`, and `QueryBuilder.translated/3`. Each value is run
     through `Localize.validate_locale/1` and unwrapped to its `:cldr_locale_id` atom.
-    Invalid locale names raise.
+    An invalid locale never raises at runtime: `translate/2,3` and
+    `QueryBuilder.translated/3` leave it out of the fallback chain, so it resolves to
+    the next locale or the base value, and only `translate!/3` raises it. An invalid
+    locale in the `:locales` option raises when the schema compiles.
 
   * **Fallbacks walk the CLDR parent chain.** A locale expands into a fallback chain
     by walking parents (e.g. `:"en-AU"` → `:"en-001"` → `:en`, stopping before the
@@ -529,7 +532,9 @@ defmodule Localize.Translate do
 
   ### Returns
 
-  * The translated struct, or the translated value of a single field.
+  * The translated struct, or the translated value of a single field. A locale that is
+    not valid is left out of the chain, so the struct is returned untranslated when no
+    valid locale is left.
 
   ### Examples
 
@@ -579,7 +584,8 @@ defmodule Localize.Translate do
   ### Returns
 
   * The translated value, or the value from the base column when no translation exists
-    for any locale in the chain.
+    for any locale in the chain. A locale that is not valid, including `nil`, is left out
+    of the chain rather than raised on, so a locale taken from a request is safe to pass.
 
   ### Examples
 
@@ -637,6 +643,9 @@ defmodule Localize.Translate do
 
   * Raises a `RuntimeError` if no translation exists for any locale in the chain.
 
+  * Raises a `Localize.InvalidLocaleError` if any locale in the chain is not valid,
+    including `nil`.
+
   ### Examples
 
       Localize.Translate.translate!(article, :title, :de)
@@ -645,7 +654,7 @@ defmodule Localize.Translate do
   """
   @spec translate!(translatable(), field(), locale_list() | struct()) :: any()
   def translate!(%{__struct__: module} = translatable, field, locale) when is_atom(field) do
-    chain = expand_locale(locale)
+    chain = expand_locale!(locale)
     default_locale = module.__trans__(:default_locale)
 
     unless translatable?(translatable, field) do
@@ -672,7 +681,18 @@ defmodule Localize.Translate do
       value in module.__trans__(:fields)
   end
 
-  defp expand_locale(locale), do: Localize.Translate.Locale.expand(locale)
+  # `translate/2,3` leave an invalid locale out of the chain, so a locale taken from a
+  # request falls through to the next locale or the base value instead of raising.
+  defp expand_locale(locale) do
+    Localize.Translate.Locale.expand_valid(locale)
+  end
+
+  defp expand_locale!(locale) do
+    case Localize.Translate.Locale.expand(locale) do
+      {:ok, chain} -> chain
+      {:error, exception} -> raise exception
+    end
+  end
 
   # With `:localize` always present, `current/0` reliably returns a `LanguageTag`.
   # `translate/N` then expands it through the CLDR parent chain, so a missing

@@ -28,5 +28,14 @@ defmodule Localize.Translate.QueryBuilderHelpersTest do
     test "filters the expansion to the supported locales" do
       assert QueryBuilder.list_to_sql_array(:"en-AU", [:en]) == ["en"]
     end
+
+    test "leaves out invalid locales" do
+      assert QueryBuilder.list_to_sql_array([:xyzabc, nil, "", :es]) == ["es"]
+    end
+
+    test "returns an empty list when no locale is valid" do
+      assert QueryBuilder.list_to_sql_array("not a locale") == []
+      assert QueryBuilder.list_to_sql_array(nil) == []
+    end
   end
 end

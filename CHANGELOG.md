@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.4.0] — Unreleased
+
+### Fixed
+
+* `translate/2,3` and `QueryBuilder.translated/3` no longer raise on an invalid locale, `nil` included: it is left out of the fallback chain, so the base value is returned. `translate!/3` still raises `Localize.InvalidLocaleError`.
+
 ## [v0.3.0] — 2026-11-24
 
 ### Added

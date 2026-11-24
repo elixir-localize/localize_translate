@@ -73,7 +73,55 @@ defmodule Localize.Translate.FallbackTest do
     end
   end
 
+  describe "translate/2,3 with an invalid locale" do
+    test "translate/3 falls back to the base value" do
+      comment = %Comment{
+        comment: "English comment",
+        transcriptions: %{"es" => %{"comment" => "Comentario"}}
+      }
+
+      for locale <- [:xyzabc, "not a locale", "", :"", nil, 42, %{}, [nil]] do
+        assert Translate.translate(comment, :comment, locale) == "English comment",
+               inspect(locale)
+      end
+    end
+
+    test "translate/3 skips an invalid locale in a chain" do
+      comment = %Comment{
+        comment: "English comment",
+        transcriptions: %{"es" => %{"comment" => "Comentario"}}
+      }
+
+      assert Translate.translate(comment, :comment, [:xyzabc, nil, "es"]) == "Comentario"
+    end
+
+    test "translate/2 leaves the struct untranslated" do
+      comment = %Comment{
+        comment: "English comment",
+        transcriptions: %{"es" => %{"comment" => "Comentario"}}
+      }
+
+      for locale <- ["not a locale", "", nil, 42] do
+        assert Translate.translate(comment, locale).comment == "English comment",
+               inspect(locale)
+      end
+    end
+  end
+
   describe "translate!/3" do
+    test "raises the locale error for an invalid locale" do
+      comment = %Comment{
+        comment: "English comment",
+        transcriptions: %{"es" => %{"comment" => "Comentario"}}
+      }
+
+      for locale <- ["not a locale", nil, [:es, nil]] do
+        assert_raise Localize.InvalidLocaleError, fn ->
+          Translate.translate!(comment, :comment, locale)
+        end
+      end
+    end
+
     test "returns the translation when one exists" do
       comment = %Comment{
         comment: "English comment",

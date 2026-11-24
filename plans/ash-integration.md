@@ -2,7 +2,7 @@
 
 **Status:** draft, 2026-11-24
 
-A proposal for using `Localize.Translate` with Ash resources, prompted by mishka_cms_core, an Ash application whose sites each choose their languages at runtime. Nothing here is built yet; a spike on three technical points comes first. The extension is a package of its own (decided 2026-11-24).
+A proposal for using `Localize.Translate` with Ash resources, prompted by mishka_cms_core, an Ash application whose sites each choose their languages at runtime. The spike is done and confirms the design (see "Spike findings"); the core fixes come next. The extension is a package of its own (decided 2026-11-24).
 
 ## The problem
 
@@ -121,6 +121,24 @@ These help Ecto users as much as Ash users, and the extension needs them:
 
 * Tenant-scoped resources, so that `locales` and `default_locale` are exercised per tenant.
 
+## Spike findings
+
+Run 2026-11-24 against Ash 3.38.0, AshPostgres 2.16 and Spark 2.7.10, in a throwaway project with a hand-written calculation module and a minimal extension.
+
+* **`||` compiles to `COALESCE`.** A `fr-CA` chain becomes nested `coalesce(jsonb_extract_path_text(translations, $1, $2), coalesce(…, name))`. Load, filter and sort all run in SQL, and the locale and field names are bound parameters, not interpolated text.
+
+* **String-keyed `get_path` reads `jsonb` correctly.** `get_path(^ref(:translations), ^["fr", "name"])` compiles to `jsonb_extract_path_text` with string parameters, and `type(…, :string)` casts the result. Ash 3.38 requires `ref` to be pinned inside `expr` (`^ref(field)`).
+
+* **A transformer can build everything.** `Ash.Resource.Builder.add_new_attribute/4` and `add_new_calculation/5` add the `:translations` attribute and one `translated_<field>` calculation per field, and `Spark.Dsl.Transformer.eval/3` defines `__trans__/1`. The core's `translate/2,3` then work on an Ash record unchanged. The spike ordered its transformer with `before?(_) -> true`; the extension must name the Ash transformers it precedes. The core's `@after_compile` field and container checks do not run this way, so the extension needs a verifier that does the same.
+
+* **Memory and SQL agree.** On `Ash.DataLayer.Ets` the same expression gave the same load, filter and sort results as AshPostgres for six fixtures, including a missing locale, a `null` value, an empty string and a number.
+
+* **The query's locale context is reachable.** The calculation reads it as `context.source_context[:locale]`, after the argument and before `Localize.get_locale/0`. `Ash.Query.set_context(query, %{locale: "fr"})` drives load and filter.
+
+* **The write side must clean values.** Both layers return an empty string rather than falling back, and return the number `42` as `"42"`. So the type must drop empty strings and cast each value with its base attribute's type, as the proposal says; the read expression can stay simple.
+
+* **An invalid locale raises inside the calculation**, since `Localize.Translate.Locale.expand/1` raises. This is the core fix already listed, and the calculation must fall back to the base attribute instead.
+
 ## Decisions
 
 * 2026-11-24 — The extension is a separate package, `localize_translate_ash`, not an optional dependency of `localize_translate` (user). Because it keeps Ash and Spark out of the core's dependencies and CI. The core's related-records fix is therefore generic, through `__trans__(:associations)`.
@@ -131,9 +149,9 @@ These help Ecto users as much as Ash users, and the extension needs them:
 
 ## Tasks
 
-* [ ] **Spike the open technical points** — whether AshPostgres compiles `||` between nullable strings to `COALESCE`, whether `get_path` with string keys reads a `jsonb` column as the type expects, and whether a Spark transformer can define `__trans__/1`. A day; it decides the expression shape before anything is built on it.
+* [x] **Spike the open technical points** — all three confirmed, plus ETS parity and the query locale context; see "Spike findings". 2026-11-24.
 
-* [ ] **Core fixes** — relationships through `__trans__(:associations)`, a runtime `:default_locale` with the default-locale invariant in both `QueryBuilder` paths and the `translate_field` database function, and no raising on an invalid locale. Each lands and releases in `localize_translate` before the extension needs it.
+* [ ] **Core fixes** — relationships through `__trans__(:associations)`, a runtime `:default_locale` with the default-locale invariant in both `QueryBuilder` paths and the `translate_field` database function, and no raising on an invalid locale. Each lands and releases in `localize_translate` before the extension needs it. No raising on an invalid locale is done (uncommitted, 2026-11-24): `Locale.expand/2` returns `{:ok, chain}` or `{:error, exception}`, and `Locale.expand_valid/2` leaves invalid locales out, which the calculation can use.
 
 * [ ] **The new package** — `localize_translate_ash` under `~/Development/localize/`, with the house CI matrix, pre-commit hook, `STATUS.md` and `CLAUDE.local.md`; the GitHub repository is the user's to create.
 

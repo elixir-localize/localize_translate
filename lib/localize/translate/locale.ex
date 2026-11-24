@@ -6,8 +6,10 @@ defmodule Localize.Translate.Locale do
   # to its `:cldr_locale_id` atom. Fallback chains are constructed by walking
   # CLDR parent locales.
   #
-  # Invalid locale names raise — by design. The library treats locale identifiers as a
-  # bounded set defined by CLDR, not as free-form keys.
+  # Locale identifiers are a bounded set defined by CLDR, not free-form keys, so every
+  # input is validated. An invalid one is never raised at runtime: `expand/2` returns it
+  # as an error, and `expand_valid/2` leaves it out of the chain. Only `normalise!/1`,
+  # which validates schema options at compile time, raises.
 
   alias Localize.LanguageTag
 
@@ -49,25 +51,94 @@ defmodule Localize.Translate.Locale do
   use this to drop parents that the schema doesn't actually carry translations for.
   Pass `nil` (or an empty list) to skip filtering.
 
-  Raises if any input is not a valid locale.
+  Returns `{:ok, chain}`, or `{:error, exception}` for the first input that is not a
+  valid locale. `nil` is not a locale, alone or in a list.
   """
-  @spec expand(input() | [input()] | nil, [atom()] | nil) :: [atom()]
-  def expand(input, supported \\ nil)
+  @spec expand(input() | [input()] | nil, [atom()] | nil) ::
+          {:ok, [atom()]} | {:error, Exception.t()}
+  def expand(input, supported \\ nil) do
+    input
+    |> wrap_input()
+    |> Enum.reduce_while({:ok, []}, &expand_into/2)
+    |> finish_chain(supported)
+  end
 
-  def expand(nil, _supported), do: []
+  @doc """
+  Expands `input` into a fallback chain as `expand/2` does, leaving out every input that
+  is not a valid locale.
 
-  def expand(input, supported) do
+  An invalid locale has no translations, so leaving it out gives the same result as
+  looking it up: the chain moves on to the next locale, or to the base value when none
+  is left. Use this where a locale comes from a request and the caller wants a value,
+  not an error.
+  """
+  @spec expand_valid(input() | [input()] | nil, [atom()] | nil) :: [atom()]
+  def expand_valid(input, supported \\ nil)
+
+  def expand_valid(nil, _supported), do: []
+
+  def expand_valid(input, supported) do
     input
     |> List.wrap()
-    |> Enum.flat_map(&expand_one!/1)
+    |> Enum.flat_map(&valid_chain/1)
+    |> build_chain(supported)
+  end
+
+  # `List.wrap(nil)` is `[]`, which would let a bare `nil` through as an empty chain.
+  defp wrap_input(nil) do
+    [nil]
+  end
+
+  defp wrap_input(input) do
+    List.wrap(input)
+  end
+
+  defp expand_into(input, {:ok, chains}) do
+    case expand_one(input) do
+      {:ok, chain} -> {:cont, {:ok, [chain | chains]}}
+      {:error, _exception} = error -> {:halt, error}
+    end
+  end
+
+  defp finish_chain({:ok, chains}, supported) do
+    chain =
+      chains
+      |> Enum.reverse()
+      |> Enum.concat()
+      |> build_chain(supported)
+
+    {:ok, chain}
+  end
+
+  defp finish_chain({:error, _exception} = error, _supported) do
+    error
+  end
+
+  defp valid_chain(input) do
+    case expand_one(input) do
+      {:ok, chain} -> chain
+      {:error, _exception} -> []
+    end
+  end
+
+  defp build_chain(chain, supported) do
+    chain
     |> Enum.reject(&is_nil/1)
     |> Enum.uniq()
     |> filter_supported(supported)
   end
 
-  defp expand_one!(input) do
-    tag = validate!(input)
-    walk_parents(tag, [tag.cldr_locale_id])
+  # `nil` is refused here rather than left to `Localize.validate_locale/1`, which before
+  # localize 1.10 read it as the language subtag `nil`.
+  defp expand_one(nil) do
+    {:error, Localize.InvalidLocaleError.exception(locale_id: "nil")}
+  end
+
+  defp expand_one(input) do
+    case Localize.validate_locale(input) do
+      {:ok, tag} -> {:ok, walk_parents(tag, [tag.cldr_locale_id])}
+      {:error, _exception} = error -> error
+    end
   end
 
   defp validate!(input) do
@@ -82,11 +153,10 @@ defmodule Localize.Translate.Locale do
   defp walk_parents(%LanguageTag{language: :und}, acc), do: Enum.reverse(acc)
 
   defp walk_parents(%LanguageTag{} = tag, acc) do
-    {:ok, parent} = Localize.Locale.parent(tag)
-
-    case parent do
-      %LanguageTag{language: :und} -> Enum.reverse(acc)
-      _ -> walk_parents(parent, [derive_cldr_locale_id(parent) | acc])
+    case Localize.Locale.parent(tag) do
+      {:ok, %LanguageTag{language: :und}} -> Enum.reverse(acc)
+      {:ok, parent} -> walk_parents(parent, [derive_cldr_locale_id(parent) | acc])
+      {:error, _exception} -> Enum.reverse(acc)
     end
   end
 
