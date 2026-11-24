@@ -102,26 +102,13 @@ defmodule Localize.Translate.Store.SiblingResource do
 
   @impl Localize.Translate.Store
   def load_translations(%{__struct__: module} = subject, options) do
-    repo = fetch_option!(options, :repo)
-    schema = fetch_option!(options, :schema)
-    foreign_key = fetch_option!(options, :foreign_key)
-    locale_field = Keyword.get(options, :locale_field, :locale)
-    primary_key = Keyword.get(options, :primary_key, :id)
+    with {:ok, configuration} <- configuration(subject, options),
+         {:ok, rows} <- fetch_rows(configuration) do
+      fields = module.__trans__(:fields)
+      container = build_container(rows, fields, configuration.locale_field)
 
-    case Map.fetch!(subject, primary_key) do
-      nil ->
-        # An unpersisted subject has no rows to load. Present an empty container
-        # so resolution falls back to base values rather than raising.
-        {:ok, put_container(subject, module, %{})}
-
-      id ->
-        rows = repo.all(from(t in schema, where: field(t, ^foreign_key) == ^id))
-        fields = module.__trans__(:fields)
-
-        {:ok, put_container(subject, module, build_container(rows, fields, locale_field))}
+      {:ok, put_container(subject, module, container)}
     end
-  rescue
-    exception -> {:error, exception}
   end
 
   @impl Localize.Translate.Store
@@ -135,30 +122,118 @@ defmodule Localize.Translate.Store.SiblingResource do
   end
 
   @impl Localize.Translate.Store
-  def queryable?, do: false
+  def queryable? do
+    false
+  end
+
+  # Every option and the subject's key are checked before the query, so a
+  # misconfiguration is an error tuple rather than an exception.
+  defp configuration(subject, options) when is_list(options) do
+    locale_field = Keyword.get(options, :locale_field, :locale)
+    primary_key = Keyword.get(options, :primary_key, :id)
+
+    with {:ok, repo} <- required_option(options, :repo),
+         {:ok, schema} <- required_option(options, :schema),
+         {:ok, foreign_key} <- required_option(options, :foreign_key),
+         :ok <- validate_repo(repo),
+         {:ok, schema_fields} <- schema_fields(schema),
+         :ok <- validate_field(schema, schema_fields, foreign_key, :foreign_key),
+         :ok <- validate_field(schema, schema_fields, locale_field, :locale_field),
+         {:ok, id} <- primary_key_value(subject, primary_key) do
+      {:ok,
+       %{
+         repo: repo,
+         schema: schema,
+         foreign_key: foreign_key,
+         locale_field: locale_field,
+         id: id
+       }}
+    end
+  end
+
+  defp configuration(_subject, options) do
+    configuration_error("options must be a keyword list, given: #{inspect(options)}")
+  end
+
+  defp required_option(options, key) do
+    case Keyword.fetch(options, key) do
+      {:ok, value} ->
+        {:ok, value}
+
+      :error ->
+        configuration_error("requires a #{inspect(key)} option, given: #{inspect(options)}")
+    end
+  end
+
+  defp validate_repo(repo) do
+    if is_atom(repo) and Code.ensure_loaded?(repo) and function_exported?(repo, :all, 2) do
+      :ok
+    else
+      configuration_error("the :repo option must be an Ecto.Repo, given: #{inspect(repo)}")
+    end
+  end
+
+  defp schema_fields(schema) do
+    if is_atom(schema) and Code.ensure_loaded?(schema) and
+         function_exported?(schema, :__schema__, 1) do
+      {:ok, schema.__schema__(:fields)}
+    else
+      configuration_error("the :schema option must be an Ecto schema, given: #{inspect(schema)}")
+    end
+  end
+
+  defp validate_field(schema, schema_fields, field, option) do
+    if field in schema_fields do
+      :ok
+    else
+      configuration_error(
+        "the #{inspect(option)} option names #{inspect(field)}, which #{inspect(schema)} does not define"
+      )
+    end
+  end
+
+  defp primary_key_value(subject, primary_key) do
+    case Map.fetch(subject, primary_key) do
+      {:ok, id} ->
+        {:ok, id}
+
+      :error ->
+        configuration_error(
+          "the :primary_key option names #{inspect(primary_key)}, which #{inspect(subject.__struct__)} does not define"
+        )
+    end
+  end
+
+  defp configuration_error(message) do
+    {:error, ArgumentError.exception("#{inspect(__MODULE__)} #{message}")}
+  end
+
+  # An unpersisted subject has no rows to load. Present an empty container so
+  # resolution falls back to base values rather than querying.
+  defp fetch_rows(%{id: nil}) do
+    {:ok, []}
+  end
+
+  # The repo call is the system boundary: Ecto has no non-raising form of
+  # `Repo.all/2`, and a database error must not crash `translate/2,3`, which fall
+  # back to base values when loading fails.
+  defp fetch_rows(%{repo: repo, schema: schema, foreign_key: foreign_key, id: id}) do
+    {:ok, repo.all(from(t in schema, where: field(t, ^foreign_key) == ^id))}
+  rescue
+    exception -> {:error, exception}
+  end
 
   # Reshape the sibling rows into the container map the embedded store reads.
+  # A row with no locale is left out.
   defp build_container(rows, fields, locale_field) do
-    Map.new(rows, fn row ->
-      values = Map.new(fields, fn field -> {to_string(field), Map.get(row, field)} end)
+    for row <- rows, locale = Map.get(row, locale_field), not is_nil(locale), into: %{} do
+      values = Map.new(fields, fn field -> {Atom.to_string(field), Map.get(row, field)} end)
 
-      {to_string(Map.fetch!(row, locale_field)), values}
-    end)
+      {to_string(locale), values}
+    end
   end
 
   defp put_container(subject, module, container) do
     Map.put(subject, module.__trans__(:container), container)
-  end
-
-  defp fetch_option!(options, key) do
-    case Keyword.fetch(options, key) do
-      {:ok, value} ->
-        value
-
-      :error ->
-        raise ArgumentError,
-              "#{inspect(__MODULE__)} requires a #{inspect(key)} option, " <>
-                "given: #{inspect(options)}"
-    end
   end
 end

@@ -1,3 +1,17 @@
+defmodule Localize.Translate.Store.SiblingResourceTest.MissingTable do
+  @moduledoc false
+
+  # A sibling schema whose table does not exist, so the query fails in the database.
+  use Ecto.Schema
+
+  schema "no_such_page_translations" do
+    field(:locale, :string)
+    field(:title, :string)
+    field(:body, :string)
+    field(:page_id, :integer)
+  end
+end
+
 defmodule Localize.Translate.Store.SiblingResourceTest do
   use Localize.Translate.TestCase, async: false
 
@@ -44,6 +58,37 @@ defmodule Localize.Translate.Store.SiblingResourceTest do
     test "returns an error tuple rather than raising when options are missing",
          %{page: page} do
       assert {:error, %ArgumentError{}} = SiblingResource.load_translations(page, [])
+    end
+
+    test "returns an error tuple for each misconfigured option", %{page: page} do
+      misconfigured = [
+        Keyword.put(store_options(), :repo, NotARepo),
+        Keyword.put(store_options(), :repo, "Repo"),
+        Keyword.put(store_options(), :schema, URI),
+        Keyword.put(store_options(), :schema, nil),
+        Keyword.put(store_options(), :foreign_key, :article_id),
+        Keyword.put(store_options(), :locale_field, :language),
+        Keyword.put(store_options(), :primary_key, :uuid)
+      ]
+
+      for options <- misconfigured do
+        assert {:error, %ArgumentError{message: message}} =
+                 SiblingResource.load_translations(page, options)
+
+        assert message =~ "SiblingResource", inspect(options)
+      end
+    end
+
+    test "returns an error tuple when the options are not a keyword list", %{page: page} do
+      for options <- [nil, %{}, "options"] do
+        assert {:error, %ArgumentError{}} = SiblingResource.load_translations(page, options)
+      end
+    end
+
+    test "returns the database error rather than raising", %{page: page} do
+      options = Keyword.put(store_options(), :schema, __MODULE__.MissingTable)
+
+      assert {:error, %Postgrex.Error{}} = SiblingResource.load_translations(page, options)
     end
   end
 

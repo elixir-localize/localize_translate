@@ -16,6 +16,8 @@
 
 ### Fixed
 
+* `Store.SiblingResource.load_translations/2` checks its options and the subject's key before querying and returns `{:error, %ArgumentError{}}` for each problem, instead of raising and rescuing; only the repo call is rescued, returning the database error.
+
 * `translatable?/2` no longer creates an atom from a string field name, and returns `false` instead of raising for a module that does not use `Localize.Translate` or for arguments that are not a module and a field name.
 
 * `Store.Embedded` no longer raises on a container or locale entry that is not a map, which a `jsonb` column can hold: reads are a miss and `put_translation/5` returns `{:error, %ArgumentError{}}`. A write of an unknown locale or field to a struct container is refused instead of adding a stray key.
