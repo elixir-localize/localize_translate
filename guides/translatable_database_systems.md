@@ -243,7 +243,7 @@ Then call `Localize.Translate.translate(article, :title, MyAppWeb.Locale.current
 
 ## Step 6 — Query translated content
 
-`Localize.Translate.QueryBuilder.translated/3` builds an `Ecto.Query` fragment that returns the right value for the row, locale, and fallback chain — entirely in SQL. It handles three cases distinctly:
+`Localize.Translate.QueryBuilder.translated/4` builds an `Ecto.Query` fragment that returns the right value for the row, locale, and fallback chain — entirely in SQL. It handles three cases distinctly:
 
 **Single static locale on a field:**
 
@@ -258,10 +258,13 @@ from a in Article,
 Compiles to:
 
 ```sql
-WHERE COALESCE(a0."translations"->'fr'->>'title', a0."title") = 'Elixir'
+WHERE COALESCE(
+  CASE WHEN 'fr' = 'en' THEN a0."title" ELSE a0."translations"->'fr'->>'title' END,
+  a0."title"
+) = 'Elixir'
 ```
 
-The COALESCE makes the base column the implicit fallback. Articles with no French translation are still matched if their default `title` happens to equal "Elixir".
+The locales are passed as query parameters; they are shown inline here. The `CASE` reads the base column when the locale is the default locale, which is compared when the query runs, since it can come from a function (see "A default locale known only at runtime" below). The COALESCE makes the base column the implicit fallback, so articles with no French translation are still matched if their default `title` happens to equal "Elixir".
 
 **Static locale on the whole record (whole-row presence check):**
 
@@ -285,7 +288,7 @@ from a in Article,
   where: not is_nil(translated(Article, a.title, [:de, :es]))
 ```
 
-Compiles to a `COALESCE(...)` of one fragment per locale.
+Compiles to a `COALESCE(...)` of one `CASE` per locale, then the base column. The first locale with a translation wins; the default locale, wherever it sits in the chain, ends it at the base column.
 
 **Dynamic (runtime) locale or chain:**
 
@@ -299,12 +302,36 @@ from a in Article,
 Because the locale is no longer a compile-time literal, `QueryBuilder` falls back to the `translate_field` SQL function. The function loops through the supplied locale array at row-evaluation time:
 
 ```sql
-WHERE translate_field(a0, 'translations'::varchar, 'title'::varchar, 'en'::varchar, $1::varchar[]) = $2
+WHERE translate_field(a0, 'translations'::varchar, 'title'::varchar, $1::varchar, $2::varchar[]) = $3
 ```
+
+`$1` is the default locale, resolved when the query is built, or an empty string when there is none.
 
 This is why the migration in Step 2 is important — without it, dynamic-locale queries will error at runtime.
 
-### `translated_as/3` for SELECT clauses
+### A default locale known only at runtime
+
+A multi-site application often writes each site's base columns in that site's own language. Give `:default_locale` a function instead of a locale:
+
+```elixir
+use Localize.Translate,
+  translates: [:title, :body],
+  locales: [:en, :es, :fr],
+  default_locale: {MyApp.Sites, :default_locale, []}
+```
+
+`translate/2,3` call it with the struct, as `MyApp.Sites.default_locale(article)`, so each record can answer for its own site. A query has no record, so it calls the function with `nil`; pass the site's language to the query instead:
+
+```elixir
+from a in Article,
+  where: translated(Article, a.title, locale, default_locale: site.locale) == ^needle
+```
+
+When no default resolves, every locale is looked up in the translation container and the base column is only the final fallback. That is correct as long as the container never holds an entry for the locale the base columns are written in, so keep that text in the base columns. With a function default, `translations/1` generates an embed for every locale in `:locales`, because it cannot know the default at compile time.
+
+Changing a site's default language later leaves its base columns in the old language. Moving the text between the base columns and the container is a migration for your application to write.
+
+### `translated_as/4` for SELECT clauses
 
 When you want the translated value to come back loaded into a struct, alias it to the base column name:
 

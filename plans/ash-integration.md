@@ -101,15 +101,9 @@ These help Ecto users as much as Ash users, and the extension needs them:
 
 * **Translate related records.** The core cannot name `Ash.Resource.Info` or `%Ash.NotLoaded{}` without depending on Ash, so `translate_assocs/2` asks the module, through a new reflection `__trans__(:associations)`, which fields hold related records, falling back to `__schema__/1` for an Ecto schema. It recurses only into values that are themselves translatable structs, so an unloaded marker of any data layer is left alone. The extension defines `__trans__(:associations)` from the resource's relationships.
 
-* **A runtime default locale, for Ecto and Ash alike** (decided 2026-11-24). `:default_locale` also accepts a `{Module, function, args}`, called as `apply(module, function, [subject | args])`: with the struct for `translate/2,3`, and with `nil` for a query, since a query has no record. `translated/4` and `translated_as/4` take a `default_locale:` option for an application whose default depends on the record, such as the site's language. What makes it work is one invariant: **the container never holds an entry for the default locale**, because the base columns are that language. Writes enforce it: the Ecto `translations/1` macro already generates no embed for the default locale, and the Ash type and changes refuse it. Under the invariant `COALESCE(container->locale->>field, base)` is correct whatever the default is, so:
+* **A runtime default locale, for Ecto and Ash alike** (decided 2026-11-24, built 2026-11-24). `:default_locale` also accepts a `{Module, function, args}`, called as `apply(module, function, [subject | args])`: with the struct for `translate/2,3`, and with `nil` for a query, since a query has no record. `Localize.Translate.default_locale/1` resolves it to a CLDR locale id or `nil`, and `translated/4` and `translated_as/4` take a `default_locale:` option for a default that depends on the tenant, such as the site's language. Every path compares each locale in the chain with the resolved default: `translate/2,3` once per struct, the literal `QueryBuilder` path with a `CASE` per locale whose default is a query parameter, and the runtime path by passing the default to the `translate_field` function (an empty string for none, since the function is `STRICT`). Only when no default resolves does correctness rest on the invariant that **the container holds no entry for the default locale**; the Ash type and changes enforce it, and the guide asks Ecto users to, since `translations/1` cannot leave out an embed for a default it does not know at compile time.
 
-  * the static `QueryBuilder` path, which compares a literal locale with the default at compile time, emits the `COALESCE` instead of the base column when the default is a function;
-
-  * the dynamic path passes the default to the `translate_field` database function as a runtime parameter (`^`) rather than a string fixed at compile time;
-
-  * `translate/2,3` call the function once per call, not once per field.
-
-  Changing a site's default language later leaves its base columns in the old language; moving the text is the application's migration, which the guide should say.
+  Changing a site's default language later leaves its base columns in the old language; moving the text is the application's migration, which the guide says.
 
 * **Stop raising on an invalid locale.** `Localize.Translate.Locale` raises "by design" on an invalid locale, so `translate/3` raises on input from a request. A library returns an error or falls back instead; `translate/3` should fall back to the base value and `translate!/3` raise.
 
@@ -143,7 +137,7 @@ Run 2026-11-24 against Ash 3.38.0, AshPostgres 2.16 and Spark 2.7.10, in a throw
 
 * 2026-11-24 — The extension is a separate package, `localize_translate_ash`, not an optional dependency of `localize_translate` (user). Because it keeps Ash and Spark out of the core's dependencies and CI. The core's related-records fix is therefore generic, through `__trans__(:associations)`.
 
-* 2026-11-24 — A runtime `:default_locale` goes in the core, for Ecto as well as Ash (user). It rests on the invariant that the container holds no entry for the default locale.
+* 2026-11-24 — A runtime `:default_locale` goes in the core, for Ecto as well as Ash (user). Every path compares with the resolved default; only when none resolves does it rest on the invariant that the container holds no entry for the default locale.
 
 * 2026-11-24 — Calculations are named `translated_<field>`, such as `translated_name` (user). Because it reads as English in filters, sorts and generated APIs.
 
@@ -151,7 +145,7 @@ Run 2026-11-24 against Ash 3.38.0, AshPostgres 2.16 and Spark 2.7.10, in a throw
 
 * [x] **Spike the open technical points** — all three confirmed, plus ETS parity and the query locale context; see "Spike findings". 2026-11-24.
 
-* [ ] **Core fixes** — relationships through `__trans__(:associations)`, a runtime `:default_locale` with the default-locale invariant in both `QueryBuilder` paths and the `translate_field` database function, and no raising on an invalid locale. Each lands and releases in `localize_translate` before the extension needs it. No raising on an invalid locale is done (8f95198): `Locale.expand/2` returns `{:ok, chain}` or `{:error, exception}`, and `Locale.expand_valid/2` leaves invalid locales out, which the calculation can use. `__trans__(:associations)` is done (uncommitted, 2026-11-24); the extension defines it from the resource's relationships.
+* [x] **Core fixes** — relationships through `__trans__(:associations)`, a runtime `:default_locale` with the default-locale invariant in both `QueryBuilder` paths and the `translate_field` database function, and no raising on an invalid locale. Each lands and releases in `localize_translate` before the extension needs it. No raising on an invalid locale is done (8f95198): `Locale.expand/2` returns `{:ok, chain}` or `{:error, exception}`, and `Locale.expand_valid/2` leaves invalid locales out, which the calculation can use. `__trans__(:associations)` is done (befe2c2); the extension defines it from the resource's relationships. The runtime default locale is done (uncommitted, 2026-11-24), and fixed a literal-chain bug on the way. All three release together in 0.4.0.
 
 * [ ] **The new package** — `localize_translate_ash` under `~/Development/localize/`, with the house CI matrix, pre-commit hook, `STATUS.md` and `CLAUDE.local.md`; the GitHub repository is the user's to create.
 

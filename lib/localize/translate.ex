@@ -57,7 +57,12 @@ defmodule Localize.Translate do
 
   * `:default_locale` (optional) - declares the locale of the base untranslated columns. The
     fields in the main schema are considered to be in this locale, and no separate translation
-    embed is generated for it.
+    embed is generated for it. Either a locale, or a `{module, function, arguments}` tuple for
+    a default known only at runtime, such as the language of the site a record belongs to. The
+    function is called as `apply(module, function, [subject | arguments])` with the struct
+    being translated, or `nil` for a query, and returns a locale or `nil`. See
+    `default_locale/1`. With a function, every locale in `:locales` gets an embed, so keep the
+    default locale's text in the base fields, not in the container.
 
   * `:container` (optional) - the name of the field that holds the translations. Defaults to
     `:translations`.
@@ -123,8 +128,9 @@ defmodule Localize.Translate do
 
   * `__trans__(:locales)` - Returns the configured locales (or `nil` if not given).
 
-  * `__trans__(:default_locale)` - Returns the default locale. The fields in the main schema are
-    considered to be in this locale.
+  * `__trans__(:default_locale)` - Returns the `:default_locale` option as given: a locale, a
+    `{module, function, arguments}` tuple, or `nil`. `default_locale/1` resolves it. The fields
+    in the main schema are considered to be in this locale.
 
   * `__trans__(:associations)` - Returns the fields that hold related records, which
     `translate/2` translates too. For an Ecto schema these are its associations and
@@ -192,7 +198,8 @@ defmodule Localize.Translate do
       @spec __trans__(:locales) :: [atom(), ...] | nil
       def __trans__(:locales), do: @trans_locales
 
-      @spec __trans__(:default_locale) :: atom() | nil
+      @spec __trans__(:default_locale) ::
+              atom() | String.t() | {module(), atom(), list()} | nil
       def __trans__(:default_locale), do: @trans_default_locale
 
       @spec __trans__(:store) :: module()
@@ -402,6 +409,8 @@ defmodule Localize.Translate do
   # The translation schema: one embed per non-default locale, each of the
   # per-locale schema, which is the generated `Fields` or the caller's own.
   defp translation_schema(translation_module, fields_module, locales, default_locale) do
+    excluded_locale = literal_default_locale(default_locale)
+
     quote do
       defmodule unquote(translation_module) do
         @moduledoc false
@@ -411,12 +420,21 @@ defmodule Localize.Translate do
         @primary_key false
         embedded_schema do
           for locale_name <- List.wrap(unquote(locales)),
-              locale_name != unquote(default_locale) do
+              locale_name != unquote(excluded_locale) do
             embeds_one(locale_name, unquote(fields_module), on_replace: :update)
           end
         end
       end
     end
+  end
+
+  # A function default is known only at runtime, so no locale's embed can be left out.
+  defp literal_default_locale({_module, _function, _arguments}) do
+    nil
+  end
+
+  defp literal_default_locale(default_locale) do
+    default_locale
   end
 
   defp fields_schema(fields_module, fields) do
@@ -564,7 +582,7 @@ defmodule Localize.Translate do
 
   defp do_translate(%{__struct__: module} = translatable, locale) do
     if Keyword.has_key?(module.__info__(:functions), :__trans__) do
-      default_locale = module.__trans__(:default_locale)
+      default_locale = default_locale(translatable)
       translatable = load_translations(translatable)
 
       translatable
@@ -615,7 +633,7 @@ defmodule Localize.Translate do
   @spec translate(translatable(), field(), locale_list() | struct()) :: any()
   def translate(%{__struct__: module} = translatable, field, locale) when is_atom(field) do
     chain = expand_locale(locale)
-    default_locale = module.__trans__(:default_locale)
+    default_locale = default_locale(translatable)
 
     unless translatable?(translatable, field) do
       raise not_translatable_error(module, field)
@@ -663,7 +681,7 @@ defmodule Localize.Translate do
   @spec translate!(translatable(), field(), locale_list() | struct()) :: any()
   def translate!(%{__struct__: module} = translatable, field, locale) when is_atom(field) do
     chain = expand_locale!(locale)
-    default_locale = module.__trans__(:default_locale)
+    default_locale = default_locale(translatable)
 
     unless translatable?(translatable, field) do
       raise not_translatable_error(module, field)
@@ -672,6 +690,64 @@ defmodule Localize.Translate do
     case translate_field(translatable, chain, field, default_locale) do
       :error -> raise no_translation_error(field, locale)
       translation -> translation
+    end
+  end
+
+  @doc """
+  Returns the default locale of a translatable struct or module: the locale its base
+  fields are written in.
+
+  The schema's `:default_locale` option is either a locale or a `{module, function,
+  arguments}` tuple. A tuple is called as `apply(module, function, [subject | arguments])`,
+  where the subject is the struct, or `nil` when a module is given, as it is for a query.
+
+  ### Arguments
+
+  * `translatable` is a struct that uses `Localize.Translate`, or a module that does.
+
+  ### Returns
+
+  * The default locale as a CLDR locale id atom, such as `:en` or `:"fr-CA"`, or
+
+  * `nil` when the schema has no default locale, or its function returns `nil` or a value
+    that is not a valid locale. With no default locale every locale is looked up in the
+    translation container, so the base fields must not also have an entry there.
+
+  ### Examples
+
+      iex> Localize.Translate.default_locale(%Localize.Translate.Comment{})
+      :en
+
+      iex> Localize.Translate.default_locale(Localize.Translate.Comment)
+      :en
+
+  """
+  @spec default_locale(translatable() | module()) :: atom() | nil
+  def default_locale(%{__struct__: module} = translatable) do
+    resolve_default_locale(module, translatable)
+  end
+
+  def default_locale(module) when is_atom(module) do
+    resolve_default_locale(module, nil)
+  end
+
+  defp resolve_default_locale(module, subject) do
+    case module.__trans__(:default_locale) do
+      nil ->
+        nil
+
+      {mod, function, arguments} ->
+        normalise_default_locale(apply(mod, function, [subject | arguments]))
+
+      locale ->
+        normalise_default_locale(locale)
+    end
+  end
+
+  defp normalise_default_locale(locale) do
+    case Localize.Translate.Locale.normalise(locale) do
+      {:ok, locale_id} -> locale_id
+      {:error, _exception} -> nil
     end
   end
 
@@ -990,8 +1066,20 @@ defmodule Localize.Translate do
   @doc false
   def trans_default_locale(options) do
     case Keyword.fetch(options, :default_locale) do
-      :error -> nil
-      {:ok, default_locale} -> default_locale
+      :error ->
+        nil
+
+      {:ok, {module, function, arguments} = mfa}
+      when is_atom(module) and is_atom(function) and is_list(arguments) ->
+        mfa
+
+      {:ok, default_locale} when is_atom(default_locale) or is_binary(default_locale) ->
+        default_locale
+
+      {:ok, other} ->
+        raise ArgumentError,
+          message:
+            "Localize.Translate :default_locale must be a locale or a {module, function, arguments} tuple, got: #{inspect(other)}"
     end
   end
 

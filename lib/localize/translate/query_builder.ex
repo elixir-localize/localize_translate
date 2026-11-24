@@ -25,11 +25,24 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
       locale that is not valid, including `nil`, is left out of the chain, so a locale
       taken from a request never raises while the query is built.
 
+    * `options` is a literal keyword list of options.
+
+    ### Options
+
+    * `:default_locale` is the locale of the base columns for this query, overriding the
+      schema's `:default_locale`. May be a variable or a runtime expression, such as the
+      language of the site being queried. Without it the schema's default is used, and a
+      function default is called with `nil`, since a query has no record. A value that is
+      not a valid locale, or `nil`, means no default: every locale is looked up in the
+      translation container.
+
     ### Returns
 
-    A `fragment/1` AST suitable for use in `Ecto.Query` clauses. The fragment evaluates to
-    the translated value with fallback to the base column, or `NULL` when no translation
-    exists for the requested locales.
+    A `fragment/1` AST suitable for use in `Ecto.Query` clauses. For a field, the fragment
+    walks the chain: the default locale ends it at the base column, a locale with a
+    translation ends it with that translation, and the base column is the value when no
+    locale matches. For a whole record, it is the first locale's translations, or `NULL`
+    when no locale in the chain has any.
 
     ### Safety
 
@@ -51,13 +64,20 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
         from a in Article, where: translated(Article, a.title, :fr) == "Elixir"
         #=> SELECT a0."id", a0."title", a0."body", a0."translations"
         #=> FROM "articles" AS a0
-        #=> WHERE (COALESCE(a0."translations"->$1->>$2, a0."title") = 'Elixir')
+        #=> WHERE (COALESCE(CASE WHEN $1::varchar = $2::varchar THEN a0."title"
+        #=>   ELSE a0."translations"->$3->>$4 END, a0."title") = 'Elixir')
+        #=> -- $1 = 'fr', $2 = the default locale, $3 = 'fr', $4 = 'title'
 
         # Query items using a case insensitive comparison
         from a in Article, where: ilike(translated(Article, a.body, :es), "%elixir%")
         #=> SELECT a0."id", a0."title", a0."body", a0."translations"
         #=> FROM "articles" AS a0
-        #=> WHERE (COALESCE(a0."translations"->$1->>$2, a0."body") ILIKE '%elixir%')
+        #=> WHERE (COALESCE(CASE WHEN $1::varchar = $2::varchar THEN a0."body"
+        #=>   ELSE a0."translations"->$3->>$4 END, a0."body") ILIKE '%elixir%')
+
+        # The base columns of each site are in that site's language
+        from a in Article,
+          where: translated(Article, a.title, :fr, default_locale: site.locale) == "Elixir"
 
     ### Structured translations vs free-form translations
 
@@ -83,21 +103,20 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
 
     """
 
-    defmacro translated(module, translatable, locale) do
+    defmacro translated(module, translatable, locale, options \\ []) do
       static_locales? = static_locales?(locale)
-
-      with field <- field(translatable) do
-        module = Macro.expand(module, __CALLER__)
-        validate_field(module, field)
-        generate_query(schema(translatable), module, field, locale, static_locales?)
-      end
+      field = field(translatable)
+      module = Macro.expand(module, __CALLER__)
+      validate_field(module, field)
+      default = default_locale_param(module, options)
+      generate_query(schema(translatable), module, field, locale, default, static_locales?)
     end
 
     @doc """
     Generates a SQL fragment for use in an `Ecto.Query` `select` clause, aliased to the
     original field name.
 
-    Wraps `translated/3` so the returned column carries the base column's name. Ecto can
+    Wraps `translated/4` so the returned column carries the base column's name. Ecto can
     therefore load the translated value directly into the schema struct without further
     processing or conversion.
 
@@ -110,16 +129,33 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
 
     * `locale` is either a single locale or a list of locales acting as a fallback chain.
 
+    * `options` is a literal keyword list of options.
+
+    ### Options
+
+    * `:default_locale` is the locale of the base columns for this query. See
+      `translated/4`.
+
     ### Returns
 
     A `fragment/1` AST that selects the translated value aliased to the original field
-    name. See `translated/3` for the underlying SQL produced.
+    name. See `translated/4` for the underlying SQL produced.
 
     """
 
-    defmacro translated_as(module, translatable, locale) do
+    defmacro translated_as(module, translatable, locale, options \\ []) do
       field = field(translatable)
-      translated = quote do: translated(unquote(module), unquote(translatable), unquote(locale))
+
+      translated =
+        quote do
+          translated(
+            unquote(module),
+            unquote(translatable),
+            unquote(locale),
+            unquote(options)
+          )
+        end
+
       do_translated_as(translated, field)
     end
 
@@ -131,15 +167,40 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
       {:fragment, [], ["? AS #{inspect(to_string(field))}", translated]}
     end
 
-    defp generate_query(schema, module, field, locales, true = static_locales?)
+    # A whole-record query takes the first locale whose translations are present; the
+    # default locale plays no part.
+    defp generate_query(schema, module, nil, locales, _default, true = _static_locales?)
          when is_list(locales) do
-      for locale <- locales do
-        generate_query(schema, module, field, locale, static_locales?)
-      end
+      locales
+      |> Enum.map(&whole_record_query(schema, module, &1))
       |> coalesce(locales)
     end
 
-    defp generate_query(schema, module, nil, locale, true = _static_locales?) do
+    defp generate_query(schema, module, nil, locale, _default, true = _static_locales?) do
+      whole_record_query(schema, module, locale)
+    end
+
+    # A field query walks the chain as the `translate_field` database function and
+    # `Localize.Translate.translate/3` do: the default locale ends the chain at the base
+    # column, a translation that is present ends it with that translation, and the base
+    # column is the value when no locale matches. The default is compared at runtime,
+    # since it can come from a function or the `:default_locale` option.
+    defp generate_query(schema, module, field, locales, default, true = _static_locales?) do
+      locales = List.wrap(locales)
+      base = quote do: field(unquote(schema), unquote(field))
+
+      locales
+      |> Enum.map(&field_query(schema, module, field, &1, default, base))
+      |> Kernel.++([base])
+      |> coalesce(locales ++ [:base])
+    end
+
+    # Called at runtime - we use a database function
+    defp generate_query(schema, module, field, locales, default, false = _static_locales?) do
+      translate_field(module, schema, field, default, locales)
+    end
+
+    defp whole_record_query(schema, module, locale) do
       quote do
         fragment(
           "NULLIF((?->?),'null')",
@@ -149,29 +210,68 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
       end
     end
 
-    defp generate_query(schema, module, field, locale, true = _static_locales?)
-         when is_atom(locale) or is_binary(locale) do
-      if locale == module.__trans__(:default_locale) do
+    defp field_query(schema, module, field, locale, default, base) do
+      quote do
+        fragment(
+          "CASE WHEN ?::varchar = ?::varchar THEN ? ELSE ?->?->>? END",
+          ^to_string(unquote(locale)),
+          unquote(default),
+          unquote(base),
+          field(unquote(schema), unquote(module.__trans__(:container))),
+          ^to_string(unquote(locale)),
+          ^to_string(unquote(field))
+        )
+      end
+    end
+
+    # The default locale as a pinned query parameter, resolved when the query is built:
+    # from the `:default_locale` option when one is given, otherwise from the schema.
+    defp default_locale_param(module, options) when is_list(options) do
+      if Keyword.has_key?(options, :default_locale) do
+        locale = Keyword.fetch!(options, :default_locale)
+
         quote do
-          field(unquote(schema), unquote(field))
+          ^Localize.Translate.QueryBuilder.__default_locale__(unquote(module), unquote(locale))
         end
       else
         quote do
-          fragment(
-            "COALESCE(?->?->>?, ?)",
-            field(unquote(schema), unquote(module.__trans__(:container))),
-            ^to_string(unquote(locale)),
-            ^to_string(unquote(field)),
-            field(unquote(schema), unquote(field))
-          )
+          ^Localize.Translate.QueryBuilder.__default_locale__(unquote(module))
         end
       end
     end
 
-    # Called at runtime - we use a database function
-    defp generate_query(schema, module, field, locales, false = _static_locales?) do
-      default_locale = to_string(module.__trans__(:default_locale) || :en)
-      translate_field(module, schema, field, default_locale, locales)
+    defp default_locale_param(_module, options) do
+      raise ArgumentError,
+        message:
+          "Localize.Translate.QueryBuilder options must be a literal keyword list, got: #{Macro.to_string(options)}"
+    end
+
+    @doc false
+    # The schema's default locale as a string for a query, which has no record, so a
+    # function default is called with `nil`. The empty string stands for no default: the
+    # `translate_field` database function is `STRICT`, so it cannot take `NULL`.
+    @spec __default_locale__(module()) :: String.t()
+    def __default_locale__(module) do
+      module
+      |> Localize.Translate.default_locale()
+      |> default_locale_string()
+    end
+
+    @doc false
+    @spec __default_locale__(module(), term()) :: String.t()
+    def __default_locale__(_module, locale) do
+      case Localize.Translate.Locale.normalise(locale) do
+        {:ok, locale_id} -> Atom.to_string(locale_id)
+        {:error, _exception} -> ""
+      end
+    end
+
+    defp default_locale_string(nil) do
+      ""
+    end
+
+    defp default_locale_string(locale_id) do
+      Atom.to_string(locale_id)
     end
 
     defp translate_field(module, schema, nil, default_locale, locales) do
@@ -185,7 +285,7 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
         fragment(
           unquote(funcall),
           ^to_string(unquote(module.__trans__(:container))),
-          ^to_string(unquote(default_locale)),
+          unquote(default_locale),
           ^Localize.Translate.QueryBuilder.list_to_sql_array(
             unquote(locales),
             unquote(supported)
@@ -206,7 +306,7 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
           unquote(funcall),
           ^to_string(unquote(module.__trans__(:container))),
           ^to_string(unquote(field)),
-          ^to_string(unquote(default_locale)),
+          unquote(default_locale),
           ^Localize.Translate.QueryBuilder.list_to_sql_array(
             unquote(locales),
             unquote(supported)

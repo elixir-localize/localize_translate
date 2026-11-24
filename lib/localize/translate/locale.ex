@@ -41,6 +41,24 @@ defmodule Localize.Translate.Locale do
   end
 
   @doc """
+  Validates `locale` and returns its canonical `:cldr_locale_id` atom.
+
+  Returns `{:ok, locale_id}`, or `{:error, exception}` when `locale` (including `nil`) is
+  not a valid locale.
+  """
+  @spec normalise(input() | nil) :: {:ok, atom()} | {:error, Exception.t()}
+  def normalise(nil) do
+    {:error, Localize.InvalidLocaleError.exception(locale_id: "nil")}
+  end
+
+  def normalise(locale) do
+    case Localize.validate_locale(locale) do
+      {:ok, tag} -> {:ok, tag.cldr_locale_id}
+      {:error, _exception} = error -> error
+    end
+  end
+
+  @doc """
   Expands `input` into a CLDR-aware locale fallback chain.
 
   Each input is validated and then walked up the CLDR parent chain (e.g. `:"en-AU"` →

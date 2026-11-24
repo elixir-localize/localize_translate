@@ -4,9 +4,15 @@
 
 ### Added
 
+* `:default_locale` also takes a `{module, function, arguments}` tuple, called with the struct (or `nil` for a query), for a default known only at runtime. `default_locale/1` resolves it, and `QueryBuilder.translated/4` and `translated_as/4` take a `:default_locale` option.
+
 * `__trans__(:associations)` names the fields holding related records that `translate/2` also translates: an Ecto schema's associations and embeds by default, or a list of its own from a module that defines `__trans__/1` itself.
 
 ### Fixed
+
+* `QueryBuilder.translated/3` with a literal chain such as `[:it, :es]` returned the base column when the first locale had no translation; it now moves on, as a runtime chain and `translate/3` do.
+
+* A runtime-locale query on a schema with no `:default_locale` no longer treats `:en` as the default.
 
 * `translate/2` no longer raises on a struct that is not an Ecto schema, or on a related value that is a plain map; it translates only related values that are themselves translatable structs.
 
