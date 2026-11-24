@@ -153,11 +153,11 @@ Run 2026-11-24 against Ash 3.38.0, AshPostgres 2.16 and Spark 2.7.10, in a throw
 
 * [ ] **Build the extension on the core's public API** — `reflection/1` for `__trans__/1` and `locale_id/1` for locale validation, both added in 0.4.0 for this.
 
-* [ ] **A changeset validation for Ecto with a function default locale** — tracked in `TODO.md`.
-
 * [ ] **Release** — `localize_translate` 0.4.0, then `ash_localize_translate` 0.1.0 depending on it from hex.
 
 ### Done
+
+* [x] **A changeset validation for Ecto with a function default locale** — `Localize.Translate.validate_translations/1`, the Ecto counterpart of the extension's validation. 2026-11-24.
 
 * [x] **A guide** — `ash_localize_translate`'s `guides/translating_ash_resources.md`, with the mishka shape as the example. 2026-11-24.
 

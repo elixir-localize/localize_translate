@@ -1147,6 +1147,137 @@ defmodule Localize.Translate do
     nil
   end
 
+  @doc """
+  Validates the translations a changeset leaves on its record, for an Ecto schema whose
+  base fields are in its default locale.
+
+  The base fields hold the default locale's text, so the translation container must
+  not hold it too: if it did, a query and `translate/3` could disagree about which to
+  read. With a literal `:default_locale` the generated `translations/1` schema has no
+  embed for it, but a `{module, function, arguments}` default is known only per record,
+  so every locale gets an embed and only a validation can keep the default locale's
+  entry empty. Call this from a changeset function.
+
+  The check runs when the container or the record's default locale changes, so a row
+  stored before the rule was enforced does not block unrelated updates.
+
+  ### Arguments
+
+  * `changeset` is an `Ecto.Changeset` for a schema that uses `Localize.Translate`.
+
+  ### Returns
+
+  * The changeset, with an error on the container field when the record's translations
+    hold text for its default locale, or, for a map container, for a locale that is not
+    valid or not in the schema's `:locales`. A changeset for a schema that does not use
+    `Localize.Translate` is returned unchanged.
+
+  ### Examples
+
+      def changeset(article, params) do
+        article
+        |> cast(params, [:title, :body, :site_id])
+        |> cast_embed(:translations)
+        |> Localize.Translate.validate_translations()
+      end
+
+  """
+  @spec validate_translations(Ecto.Changeset.t()) :: Ecto.Changeset.t()
+  def validate_translations(%Ecto.Changeset{data: %{__struct__: module}} = changeset) do
+    if translatable_module?(module) do
+      validate_container(changeset, module)
+    else
+      changeset
+    end
+  end
+
+  def validate_translations(changeset) do
+    changeset
+  end
+
+  defp validate_container(changeset, module) do
+    container = module.__trans__(:container)
+    record = Ecto.Changeset.apply_changes(changeset)
+    default_locale = default_locale(record)
+
+    if Map.has_key?(changeset.changes, container) or
+         default_locale != default_locale(changeset.data) do
+      check_container(changeset, module, container, Map.get(record, container), default_locale)
+    else
+      changeset
+    end
+  end
+
+  defp check_container(changeset, module, container, translations, default_locale) do
+    locales = held_locales(translations, module.__trans__(:fields))
+
+    case container_error(locales, default_locale, module.__trans__(:locales)) do
+      nil ->
+        changeset
+
+      message ->
+        Ecto.Changeset.add_error(changeset, container, message, validation: :translations)
+    end
+  end
+
+  defp container_error(locales, default_locale, supported) do
+    Enum.find_value(locales, fn locale ->
+      case locale_id(locale) do
+        {:ok, ^default_locale} ->
+          "holds a translation for #{default_locale}, the default locale, whose text belongs in the base fields"
+
+        {:ok, locale_id} ->
+          unsupported_error(locale_id, supported)
+
+        {:error, _exception} ->
+          "holds translations for #{inspect(locale)}, which is not a valid locale"
+      end
+    end)
+  end
+
+  defp unsupported_error(locale_id, supported) when is_list(supported) do
+    if locale_id not in supported do
+      "holds translations for #{locale_id}, which is not one of the schema's locales"
+    end
+  end
+
+  defp unsupported_error(_locale_id, _supported) do
+    nil
+  end
+
+  # The locales whose entry holds any translated value. A generated translations schema
+  # is a struct with one embed per locale; a map container is keyed by locale.
+  defp held_locales(%{__struct__: _} = translations, fields) do
+    translations
+    |> Map.from_struct()
+    |> Map.delete(:__meta__)
+    |> held_keys(fields)
+  end
+
+  defp held_locales(translations, fields) when is_map(translations) do
+    held_keys(translations, fields)
+  end
+
+  defp held_locales(_translations, _fields) do
+    []
+  end
+
+  defp held_keys(entries, fields) do
+    entries
+    |> Enum.filter(fn {_locale, values} -> holds_text?(values, fields) end)
+    |> Enum.map(fn {locale, _values} -> locale end)
+  end
+
+  defp holds_text?(values, fields) when is_map(values) do
+    Enum.any?(fields, fn field ->
+      not is_nil(Map.get(values, field)) or not is_nil(Map.get(values, Atom.to_string(field)))
+    end)
+  end
+
+  defp holds_text?(_values, _fields) do
+    false
+  end
+
   defp resolve_default_locale(module, subject) do
     case module.__trans__(:default_locale) do
       nil ->

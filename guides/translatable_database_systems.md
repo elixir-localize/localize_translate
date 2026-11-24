@@ -306,7 +306,16 @@ from a in Article,
   where: translated(Article, a.title, locale, default_locale: site.locale) == ^needle
 ```
 
-When no default resolves, every locale is looked up in the translation container and the base column is only the final fallback. That is correct as long as the container never holds an entry for the locale the base columns are written in, so keep that text in the base columns. With a function default, `translations/1` generates an embed for every locale in `:locales`, because it cannot know the default at compile time.
+When no default resolves, every locale is looked up in the translation container and the base column is only the final fallback. That is correct as long as the container never holds an entry for the locale the base columns are written in, so keep that text in the base columns. With a function default, `translations/1` generates an embed for every locale in `:locales`, because it cannot know the default at compile time, so end the changeset with `Localize.Translate.validate_translations/1`, which refuses text in the record's own default locale:
+
+```elixir
+def changeset(article, params) do
+  article
+  |> cast(params, [:title, :body, :site_id])
+  |> cast_embed(:translations)
+  |> Localize.Translate.validate_translations()
+end
+```
 
 Changing a site's default language later leaves its base columns in the old language. Moving the text between the base columns and the container is a migration for your application to write.
 

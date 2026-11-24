@@ -6,6 +6,8 @@
 
 * `:default_locale` also takes a `{module, function, arguments}` tuple, called with the struct (or `nil` for a query), for a default known only at runtime. `default_locale/1` resolves it, and `QueryBuilder.translated/4` and `translated_as/4` take a `:default_locale` option.
 
+* `validate_translations/1` is a changeset validation that refuses translations for the record's own default locale, resolving a function default from the changed record, and, for a map container, invalid or unlisted locales.
+
 * `reflection/1` generates the `__trans__/1` reflection with defaults for every key, for code that builds a translatable module without `use Localize.Translate`, such as an Ash extension.
 
 * `locale_id/1` validates a locale and returns the CLDR locale id translations are keyed by, or an error, for code that stores or reads translations itself.
