@@ -22,6 +22,8 @@
 
 `localize_translate` requires **Elixir 1.17** or later and **OTP 26** or later.
 
+On OTP 26, which has no `:json` module, add `{:json_polyfill, "~> 0.2 or ~> 1.0"}` to your dependencies; Localize needs it and raises at startup without it.
+
 ## Installation
 
 Add `localize_translate` to your list of dependencies in `mix.exs`:
