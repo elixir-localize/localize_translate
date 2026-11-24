@@ -16,6 +16,8 @@
 
 ### Fixed
 
+* `Store.Embedded` no longer raises on a container or locale entry that is not a map, which a `jsonb` column can hold: reads are a miss and `put_translation/5` returns `{:error, %ArgumentError{}}`. A write of an unknown locale or field to a struct container is refused instead of adding a stray key.
+
 * A runtime-locale query works with any binding name and on joined schemas; it guessed the table alias from the binding name, so `from b in Book` (alias `a0`) failed. A literal locale is now expanded and validated as a runtime one is, so `:"es-419"` reads `:es`.
 
 * `QueryBuilder.translated/3` with a literal chain such as `[:it, :es]` returned the base column when the first locale had no translation; it now moves on, as a runtime chain and `translate/3` do.

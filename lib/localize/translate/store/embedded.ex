@@ -29,48 +29,36 @@ defmodule Localize.Translate.Store.Embedded do
   @impl Localize.Translate.Store
   def fetch_translation(%{__struct__: module} = subject, locale, field, _options \\ []) do
     with {:ok, all_translations} <- Map.fetch(subject, module.__trans__(:container)),
-         {:ok, for_locale} <- fetch_locale(all_translations, locale),
-         {:ok, value} <- fetch_field(for_locale, field) do
-      {:ok, value}
-    else
-      _other -> :error
+         {:ok, for_locale} <- fetch_locale(all_translations, locale) do
+      fetch_field(for_locale, field)
     end
   end
 
   @impl Localize.Translate.Store
   def put_translation(%{__struct__: module} = subject, locale, field, value, _options \\ []) do
     container = module.__trans__(:container)
-    all_translations = Map.get(subject, container) || %{}
-    key = locale_key(all_translations, locale)
+    all_translations = Map.get(subject, container)
 
-    updated =
-      all_translations
-      |> Map.put_new(key, %{})
-      |> Map.update!(key, &Map.put(&1, field_key(Map.get(all_translations, key), field), value))
-
-    {:ok, Map.put(subject, container, updated)}
+    with {:ok, updated} <- put_in_container(all_translations, locale, field, value) do
+      {:ok, Map.put(subject, container, updated)}
+    end
   end
 
   @impl Localize.Translate.Store
   def locales(%{__struct__: module} = subject, _options \\ []) do
     subject
     |> Map.get(module.__trans__(:container))
-    |> case do
-      nil ->
-        []
-
-      translations ->
-        translations
-        |> Map.keys()
-        |> Enum.reject(&(&1 == :__struct__))
-        |> Enum.map(&to_locale_atom/1)
-    end
+    |> container_locales()
   end
 
   @impl Localize.Translate.Store
-  def queryable?, do: true
+  def queryable? do
+    true
+  end
 
-  # A struct container keys by atom; a decoded jsonb map keys by string.
+  # A struct container keys by atom; a decoded jsonb map keys by string. A container,
+  # or a locale's entry, that is not a map holds no translations: a jsonb column can
+  # hold any JSON value, so these read as a miss rather than raise.
   defp fetch_locale(%{__struct__: _} = all_translations, locale) when is_binary(locale) do
     fetch_locale(all_translations, to_existing_atom(locale))
   end
@@ -79,15 +67,15 @@ defmodule Localize.Translate.Store.Embedded do
     Map.fetch(all_translations, locale)
   end
 
-  defp fetch_locale(nil, _locale), do: :error
-
-  defp fetch_locale(_all_translations, nil), do: :error
-
-  defp fetch_locale(all_translations, locale) do
+  defp fetch_locale(all_translations, locale)
+       when is_map(all_translations) and not is_nil(locale) and
+              (is_atom(locale) or is_binary(locale)) do
     Map.fetch(all_translations, to_string(locale))
   end
 
-  defp fetch_field(nil, _field), do: :error
+  defp fetch_locale(_all_translations, _locale) do
+    :error
+  end
 
   defp fetch_field(%{__struct__: _} = for_locale, field) when is_binary(field) do
     fetch_field(for_locale, to_existing_atom(field))
@@ -97,28 +85,120 @@ defmodule Localize.Translate.Store.Embedded do
     Map.fetch(for_locale, field)
   end
 
-  defp fetch_field(for_locale, field) do
+  defp fetch_field(for_locale, field)
+       when is_map(for_locale) and not is_nil(field) and (is_atom(field) or is_binary(field)) do
     Map.fetch(for_locale, to_string(field))
   end
 
-  # Write using whichever key style the container already uses, so a struct
-  # container stays atom-keyed and a jsonb map stays string-keyed.
-  defp locale_key(%{__struct__: _}, locale) when is_atom(locale), do: locale
-  defp locale_key(%{__struct__: _}, locale), do: to_existing_atom(locale)
-  defp locale_key(_all_translations, locale), do: to_string(locale)
+  defp fetch_field(_for_locale, _field) do
+    :error
+  end
 
-  defp field_key(%{__struct__: _}, field) when is_atom(field), do: field
-  defp field_key(%{__struct__: _}, field), do: to_existing_atom(field)
-  defp field_key(_for_locale, field), do: to_string(field)
+  # Writes use whichever key style the container already uses, so a struct container
+  # stays atom-keyed and a jsonb map stays string-keyed.
+  defp put_in_container(nil, locale, field, value) do
+    put_in_container(%{}, locale, field, value)
+  end
+
+  defp put_in_container(all_translations, locale, field, value) when is_map(all_translations) do
+    with {:ok, locale_key} <- write_key(all_translations, locale, :locale),
+         {:ok, for_locale} <- writable_locale(Map.get(all_translations, locale_key), locale),
+         {:ok, field_key} <- write_key(for_locale, field, :field) do
+      {:ok, Map.put(all_translations, locale_key, Map.put(for_locale, field_key, value))}
+    end
+  end
+
+  defp put_in_container(all_translations, _locale, _field, _value) do
+    write_error("the translation container is not a map: #{inspect(all_translations)}")
+  end
+
+  # A struct only takes the keys it defines: an unknown locale or field is refused
+  # rather than added as a stray key.
+  defp write_key(%{__struct__: _} = struct, key, kind) do
+    atom_key = struct_key(key)
+
+    if atom_key != :__struct__ and Map.has_key?(struct, atom_key) do
+      {:ok, atom_key}
+    else
+      write_error("#{inspect(struct.__struct__)} has no #{kind} #{inspect(key)}")
+    end
+  end
+
+  defp write_key(_map, key, _kind) when is_binary(key) and key != "" do
+    {:ok, key}
+  end
+
+  defp write_key(_map, key, _kind) when is_atom(key) and not is_nil(key) and key != :"" do
+    {:ok, Atom.to_string(key)}
+  end
+
+  defp write_key(_map, key, kind) do
+    write_error("#{inspect(key)} is not a valid #{kind} name")
+  end
+
+  defp struct_key(key) when is_atom(key) do
+    key
+  end
+
+  defp struct_key(key) when is_binary(key) do
+    to_existing_atom(key)
+  end
+
+  defp struct_key(_key) do
+    nil
+  end
+
+  defp writable_locale(nil, _locale) do
+    {:ok, %{}}
+  end
+
+  defp writable_locale(for_locale, _locale) when is_map(for_locale) do
+    {:ok, for_locale}
+  end
+
+  defp writable_locale(for_locale, locale) do
+    write_error("the translations for #{inspect(locale)} are not a map: #{inspect(for_locale)}")
+  end
+
+  defp write_error(message) do
+    {:error, ArgumentError.exception(message)}
+  end
+
+  defp container_locales(%{__struct__: _} = translations) do
+    translations
+    |> Map.keys()
+    |> Enum.reject(&(&1 == :__struct__))
+  end
+
+  defp container_locales(translations) when is_map(translations) do
+    translations
+    |> Map.keys()
+    |> Enum.map(&locale_atom/1)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp container_locales(_translations) do
+    []
+  end
+
+  defp locale_atom(locale) when is_binary(locale) do
+    to_existing_atom(locale)
+  end
+
+  defp locale_atom(locale) when is_atom(locale) do
+    locale
+  end
+
+  defp locale_atom(_locale) do
+    nil
+  end
 
   # An unknown name has no existing atom, and therefore no translation, so it
-  # resolves to the same miss without growing the atom table.
+  # resolves to the same miss without growing the atom table. `String.to_existing_atom/1`
+  # has no non-raising form, so this is the one rescue in the store.
   defp to_existing_atom(value) do
     String.to_existing_atom(value)
   rescue
     ArgumentError -> nil
   end
-
-  defp to_locale_atom(locale) when is_atom(locale), do: locale
-  defp to_locale_atom(locale), do: to_existing_atom(locale)
 end

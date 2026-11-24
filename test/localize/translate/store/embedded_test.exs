@@ -129,6 +129,100 @@ defmodule Localize.Translate.Store.EmbeddedTest do
     end
   end
 
+  describe "malformed containers" do
+    test "fetch_translation/4 is a miss for a container or entry that is not a map" do
+      for translations <- [
+            "garbage",
+            42,
+            [1],
+            %{"es" => "a string"},
+            %{"es" => [1]},
+            %{"es" => 42}
+          ] do
+        article = %Article{title: "Title", translations: translations}
+
+        assert Embedded.fetch_translation(article, :es, :title, []) == :error,
+               inspect(translations)
+      end
+    end
+
+    test "fetch_translation/4 is a miss for a locale or field that is not a name" do
+      article = %Article{translations: %{"es" => %{"title" => "Título"}}}
+
+      for {locale, field} <- [{42, :title}, {:es, 42}, {:es, nil}, {%{}, :title}] do
+        assert Embedded.fetch_translation(article, locale, field, []) == :error,
+               inspect({locale, field})
+      end
+    end
+
+    test "translate/3 falls back to the base value instead of raising" do
+      for translations <- ["garbage", %{"es" => "a string"}, %{"es" => %{"title" => nil}}] do
+        article = %Article{title: "Title", translations: translations}
+
+        assert Localize.Translate.translate(article, :title, :es) == "Title",
+               inspect(translations)
+      end
+    end
+
+    test "locales/2 is empty for a container that is not a map" do
+      for translations <- ["garbage", 42, [1]] do
+        assert Embedded.locales(%Article{translations: translations}, []) == [],
+               inspect(translations)
+      end
+    end
+
+    test "locales/2 leaves out keys that are not known locale names" do
+      article = %Article{translations: %{"es" => %{}, "definitely-not-an-atom-zz9" => %{}}}
+
+      assert Embedded.locales(article, []) == [:es]
+    end
+
+    test "put_translation/5 returns an error for a container that is not a map" do
+      article = %Article{translations: "garbage"}
+
+      assert {:error, %ArgumentError{}} = Embedded.put_translation(article, :es, :title, "T")
+    end
+
+    test "put_translation/5 returns an error for a locale entry that is not a map" do
+      article = %Article{translations: %{"es" => "a string"}}
+
+      assert {:error, %ArgumentError{}} = Embedded.put_translation(article, :es, :title, "T")
+    end
+
+    test "put_translation/5 refuses a locale or field a struct container does not define" do
+      article = build(:article)
+
+      for {locale, field} <- [
+            {:it, :title},
+            {"zz-not-a-locale", :title},
+            {:es, :nope},
+            {:es, "__struct__"},
+            {"__struct__", :title}
+          ] do
+        assert {:error, %ArgumentError{}} = Embedded.put_translation(article, locale, field, "T"),
+               inspect({locale, field})
+      end
+
+      assert is_struct(article.translations, Article.Translations)
+    end
+
+    test "put_translation/5 refuses a nil or empty locale or field on a map container" do
+      article = %Article{translations: %{}}
+
+      for {locale, field} <- [{nil, :title}, {"", :title}, {:es, nil}, {:es, ""}, {42, :title}] do
+        assert {:error, %ArgumentError{}} = Embedded.put_translation(article, locale, field, "T"),
+               inspect({locale, field})
+      end
+    end
+
+    test "put_translation/5 fills a locale whose entry is nil" do
+      article = %Article{translations: %{"es" => nil}}
+
+      assert {:ok, updated} = Embedded.put_translation(article, :es, :title, "Título")
+      assert Embedded.fetch_translation(updated, :es, :title, []) == {:ok, "Título"}
+    end
+  end
+
   describe "store selection" do
     test "a schema defaults to the embedded store" do
       assert Article.__trans__(:store) == Embedded
