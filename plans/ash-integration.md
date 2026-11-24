@@ -1,8 +1,8 @@
 # Ash integration
 
-**Status:** draft, 2026-11-24
+**Status:** in progress, 2026-11-24
 
-A proposal for using `Localize.Translate` with Ash resources, prompted by mishka_cms_core, an Ash application whose sites each choose their languages at runtime. The spike is done and confirms the design (see "Spike findings"); the core fixes come next. The extension is a package of its own (decided 2026-11-24).
+A design for using `Localize.Translate` with Ash resources, prompted by mishka_cms_core, an Ash application whose sites each choose their languages at runtime. The extension is built as its own package, `ash_localize_translate`, and tested on ETS and AshPostgres; a final review found defects to fix before its first release, which waits on `localize_translate` 0.4.0 reaching hex.
 
 ## The problem
 
@@ -149,14 +149,24 @@ Run 2026-11-24 against Ash 3.38.0, AshPostgres 2.16 and Spark 2.7.10, in a throw
 
 ## Tasks
 
+* [ ] **Fix the review's findings in `ash_localize_translate`** — a `false` translation skipped by the calculation's `||`; stored non-string values not cast back to their types; single-record writes re-checking the whole stored map; whitespace-only values handled differently on the atomic path; structs and tuple keys raising instead of erroring; dialyzer failing on the `:mfa` option types; the transformer's order against `BelongsToAttribute`. Tracked in that package's `TODO.md`.
+
+* [ ] **Build the extension on the core's public API** — `reflection/1` for `__trans__/1` and `locale_id/1` for locale validation, both added in 0.4.0 for this.
+
+* [ ] **A changeset validation for Ecto with a function default locale** — tracked in `TODO.md`.
+
+* [ ] **Release** — `localize_translate` 0.4.0, then `ash_localize_translate` 0.1.0 depending on it from hex.
+
+### Done
+
+* [x] **A guide** — `ash_localize_translate`'s `guides/translating_ash_resources.md`, with the mishka shape as the example. 2026-11-24.
+
+* [x] **The write changes** — `PutTranslation` and `RemoveTranslation`, atomic on AshPostgres with a `jsonb` merge; a validation holds whole-map writes to function `locales` and `default_locale`. 2026-11-24.
+
+* [x] **The type and the extension** — `Type.Translations`, the `translations` section, the attribute, `__trans__/1`, the `translated_<field>` calculations, and tenant-scoped default locales in queries. 2026-11-24.
+
+* [x] **The new package** — `ash_localize_translate`, with the house CI matrix, pre-commit hook, `STATUS.md` and `CLAUDE.local.md`. 2026-11-24.
+
+* [x] **Core fixes** — relationships through `__trans__(:associations)` (befe2c2), a runtime `:default_locale` (185805f), no raising on an invalid locale (8f95198), and from the build: `locale_chain/2`, `locale_id/1`, `reflection/1` and `default_locale/1` returning `nil` for non-translatable input. All in 0.4.0.
+
 * [x] **Spike the open technical points** — all three confirmed, plus ETS parity and the query locale context; see "Spike findings". 2026-11-24.
-
-* [x] **Core fixes** — relationships through `__trans__(:associations)`, a runtime `:default_locale` with the default-locale invariant in both `QueryBuilder` paths and the `translate_field` database function, and no raising on an invalid locale. Each lands and releases in `localize_translate` before the extension needs it. No raising on an invalid locale is done (8f95198): `Locale.expand/2` returns `{:ok, chain}` or `{:error, exception}`, and `Locale.expand_valid/2` leaves invalid locales out, which the calculation can use. `__trans__(:associations)` is done (befe2c2); the extension defines it from the resource's relationships. The runtime default locale is done (uncommitted, 2026-11-24), and fixed a literal-chain bug on the way. All three release together in 0.4.0.
-
-* [ ] **The new package** — `ash_localize_translate` under `~/Development/localize/` (created by the user as a `mix new` project, 2026-11-24), with the house CI matrix, pre-commit hook, `STATUS.md` and `CLAUDE.local.md`.
-
-* [ ] **The type and the extension** — `Type.Translations`, the `translations` section, the attribute, `__trans__/1` and the calculations.
-
-* [ ] **The write changes** — `PutTranslation` and `RemoveTranslation`, atomic.
-
-* [ ] **A guide** — an Ash section in the guide, with the mishka shape (media name and description, media category, site name) as the example.

@@ -4,15 +4,15 @@ Work planned for `localize_translate`; shipped changes are in the [CHANGELOG](CH
 
 ## Open
 
-* [ ] **Bring the Ash records up to date** — `plans/ash-integration.md` still reads "draft" with finished tasks unticked, the In progress item says the package is next, and the README does not mention `ash_localize_translate`.
-
 * [ ] **A function default locale and Ecto writes** — with a function `:default_locale`, `translations/1` embeds every locale and nothing stops a changeset storing the default locale's text in the container. Offer a changeset validation like `ash_localize_translate`'s.
 
 ## In progress
 
-* [ ] **Ash integration** — an Ash extension with a validated translations type, data-layer calculations for filtering and sorting, and runtime per-tenant locales, in a separate package, `ash_localize_translate`; proposal in [plans/ash-integration.md](plans/ash-integration.md). The spike and the three core fixes are done; the new package is next.
+* [ ] **Ash integration** — an Ash extension with a validated translations type, data-layer calculations for filtering and sorting, and runtime per-tenant locales, in a separate package, `ash_localize_translate`; proposal in [plans/ash-integration.md](plans/ash-integration.md). The package is built and tested; its review findings and first release remain, after `localize_translate` 0.4.0.
 
 ## Done
+
+* [x] **Bring the Ash records up to date** — the plan's status, tasks and this list describe the built package; the README and guide point Ash users to `ash_localize_translate`. 2026-11-24.
 
 * [x] **Own the `__trans__/1` reflection** — `reflection/1` generates every clause with defaults and checks its options at compile time; `use Localize.Translate` calls it. 2026-11-24, unreleased (0.4.0).
 

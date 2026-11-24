@@ -16,6 +16,8 @@
 
 * **Storage backends** — the `Localize.Translate.Store` behaviour, with an embedded store (the default) and a sibling-table store, one row per subject and locale.
 
+* **Ash resources** — [`ash_localize_translate`](https://github.com/elixir-localize/ash_localize_translate) brings the same storage and fallback to Ash, with translated calculations that filter and sort in the data layer.
+
 ## Supported Elixir and OTP versions
 
 `localize_translate` requires **Elixir 1.17** or later and **OTP 26** or later.
