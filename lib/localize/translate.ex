@@ -610,8 +610,9 @@ defmodule Localize.Translate do
   ### Returns
 
   * The translated value, or the value from the base column when no translation exists
-    for any locale in the chain. A locale that is not valid, including `nil`, is left out
-    of the chain rather than raised on, so a locale taken from a request is safe to pass.
+    for any locale in the chain. A `nil` translation counts as missing, so the chain moves
+    on to its next locale. A locale that is not valid, including `nil`, is left out of the
+    chain rather than raised on, so a locale taken from a request is safe to pass.
 
   ### Examples
 
@@ -667,7 +668,8 @@ defmodule Localize.Translate do
 
   * The translated value.
 
-  * Raises a `RuntimeError` if no translation exists for any locale in the chain.
+  * Raises a `RuntimeError` if no translation exists for any locale in the chain. A `nil`
+    translation counts as missing.
 
   * Raises a `Localize.InvalidLocaleError` if any locale in the chain is not valid,
     including `nil`.
@@ -805,6 +807,9 @@ defmodule Localize.Translate do
     end
   end
 
+  # The value of a locale is its translation, or the base field for the default locale.
+  # A `nil` value counts as missing, so a chain moves on to its next locale; this is the
+  # rule `QueryBuilder.translated/4` applies in SQL.
   defp translate_field(%{__struct__: _module} = struct, locales, field, default_locale)
        when is_list(locales) do
     Enum.reduce_while(locales, :error, fn locale, translated_field ->
@@ -824,7 +829,7 @@ defmodule Localize.Translate do
     store = module.__trans__(:store)
 
     case store.fetch_translation(struct, locale, field, module.__trans__(:store_options)) do
-      {:ok, nil} -> Map.fetch!(struct, field)
+      {:ok, nil} -> :error
       {:ok, translated_field} -> translated_field
       :error -> :error
     end

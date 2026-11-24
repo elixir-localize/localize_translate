@@ -253,19 +253,21 @@ Compiles to (parameters shown inline):
 
 ```sql
 WHERE COALESCE(
-  (SELECT CASE WHEN lt_chain.locale = lt_default.locale
-               THEN a0."title"
-               ELSE a0."translations"->lt_chain.locale->>'title' END
+  (SELECT lt_value.value
      FROM unnest(ARRAY['fr']) WITH ORDINALITY AS lt_chain(locale, position)
      CROSS JOIN (SELECT 'en' AS locale) AS lt_default
-    WHERE lt_chain.locale = lt_default.locale
-       OR a0."translations"->lt_chain.locale->>'title' IS NOT NULL
+     CROSS JOIN LATERAL (
+       SELECT CASE WHEN lt_chain.locale = lt_default.locale
+                   THEN a0."title"
+                   ELSE a0."translations"->lt_chain.locale->>'title' END AS value
+     ) AS lt_value
+    WHERE lt_value.value IS NOT NULL
     ORDER BY lt_chain.position LIMIT 1),
   a0."title"
 ) = 'Elixir'
 ```
 
-The subquery takes the first locale in the chain that is the default locale, whose value is the base column, or that holds a non-null translation. The COALESCE makes the base column the final fallback, so articles with no French translation are still matched if their default `title` happens to equal "Elixir". A translation that is `nil` counts as missing, so the chain moves on to the next locale.
+A locale's value is its translation, or the base column for the default locale, and the subquery takes the first locale whose value is not null. The COALESCE makes the base column the final fallback, so articles with no French translation are still matched if their default `title` happens to equal "Elixir". This is the same rule `translate/3` applies in memory.
 
 **The whole record (presence check):**
 
@@ -332,7 +334,7 @@ A few patterns to keep in mind as the schema grows.
 
 **Keep fields short.** The JSONB column is fetched in its entirety on every read of the row. A 5-locale article with three 500-byte fields adds ~7.5KB to the row — fine. A 5-locale article with 5MB of HTML per locale, not fine. For long-form body content, consider a `body_translations` *table* keyed by `(article_id, locale)` and continue to embed everything else.
 
-**Be deliberate about whether `nil` means missing or empty.** `Localize.Translate.translate/3` treats both as "fall back to the default value." If you need to distinguish "no Spanish translation yet" from "deliberately empty in Spanish," use `translate!/3` or a separate "translated locales" set.
+**Be deliberate about whether `nil` means missing or empty.** A `nil` translation counts as missing everywhere: `translate/3` and `QueryBuilder.translated/4` move on to the next locale in the chain and end at the base value, and `translate!/3` raises. If you need to distinguish "no Spanish translation yet" from "deliberately empty in Spanish," store an empty string, which is a value and ends the chain, or keep a separate "translated locales" set.
 
 **Index translations only when you have to.** A `CREATE INDEX articles_es_title_idx ON articles ((translations->'es'->>'title'))` is a perfectly good way to make per-locale searches fast, but each index is per-locale — adding a locale means another migration. Trigram indexes (`pg_trgm`) over the same expression handle ILIKE-style queries efficiently.
 

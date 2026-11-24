@@ -47,13 +47,22 @@ defmodule Localize.Translate.FallbackTest do
       assert Translate.translate(comment, :comment, [:es, :fr]) == "Commentaire"
     end
 
-    test "a nil translation resolves to the base value and ends the chain" do
+    test "a nil translation counts as missing and the chain moves on" do
       comment = %Comment{
         comment: "English comment",
         transcriptions: %{"es" => %{"comment" => nil}, "fr" => %{"comment" => "Commentaire"}}
       }
 
-      assert Translate.translate(comment, :comment, [:es, :fr]) == "English comment"
+      assert Translate.translate(comment, :comment, [:es, :fr]) == "Commentaire"
+    end
+
+    test "a nil base value at the default locale counts as missing too" do
+      comment = %Comment{
+        comment: nil,
+        transcriptions: %{"fr" => %{"comment" => "Commentaire"}}
+      }
+
+      assert Translate.translate(comment, :comment, [:en, :fr]) == "Commentaire"
     end
 
     test "falls back to the base value when no locale in the chain matches" do
@@ -133,6 +142,17 @@ defmodule Localize.Translate.FallbackTest do
 
     test "raises rather than falling back when no translation exists" do
       comment = %Comment{comment: "English comment", transcriptions: %{}}
+
+      assert_raise RuntimeError, ~r/translation doesn't exist/, fn ->
+        Translate.translate!(comment, :comment, :es)
+      end
+    end
+
+    test "raises when the only translation is nil" do
+      comment = %Comment{
+        comment: "English comment",
+        transcriptions: %{"es" => %{"comment" => nil}}
+      }
 
       assert_raise RuntimeError, ~r/translation doesn't exist/, fn ->
         Translate.translate!(comment, :comment, :es)

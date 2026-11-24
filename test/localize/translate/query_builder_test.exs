@@ -518,6 +518,46 @@ defmodule Localize.Translate.QueryBuilderTest do
       assert literal == "French"
       assert runtime == "French"
     end
+
+    test "a nil base value at the default locale moves on, as translate/3 does" do
+      comment =
+        Repo.insert!(%Comment{
+          comment: nil,
+          transcriptions: %{"fr" => %{"comment" => "French"}}
+        })
+
+      id = comment.id
+      locales = [:en, :fr]
+
+      literal =
+        Repo.one(
+          from(c in Comment,
+            where: c.id == ^id,
+            select: translated(Comment, c.comment, [:en, :fr])
+          )
+        )
+
+      runtime =
+        Repo.one(
+          from(c in Comment, where: c.id == ^id, select: translated(Comment, c.comment, locales))
+        )
+
+      assert literal == "French"
+      assert runtime == "French"
+      assert Localize.Translate.translate(comment, :comment, locales) == "French"
+    end
+
+    test "a field with no value in any locale is nil" do
+      %{id: id} = Repo.insert!(%Comment{comment: nil, transcriptions: %{}})
+      locales = [:en, :fr]
+
+      assert Repo.one(
+               from(c in Comment,
+                 where: c.id == ^id,
+                 select: translated(Comment, c.comment, locales)
+               )
+             ) == nil
+    end
   end
 
   describe "with an invalid runtime locale" do

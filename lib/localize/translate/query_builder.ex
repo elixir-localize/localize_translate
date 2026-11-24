@@ -20,15 +20,18 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
     ORDER BY lt_chain.position LIMIT 1)\
     """
 
-    # A field query is the first locale in the chain that is the default locale (whose
-    # value is the base column) or that holds a non-null translation of the field, and
-    # the base column when no locale matches.
+    # A field query is the first non-null value in the chain, where a locale's value is
+    # its translation of the field, or the base column for the default locale, and the
+    # base column when no locale has one. A null value counts as missing, as it does in
+    # `Localize.Translate.translate/3`.
     @field_sql """
     COALESCE(\
-    (SELECT CASE WHEN lt_chain.locale = lt_default.locale THEN ? ELSE ?->lt_chain.locale->>? END \
+    (SELECT lt_value.value \
     FROM unnest(?::varchar[]) WITH ORDINALITY AS lt_chain(locale, position) \
     CROSS JOIN (SELECT ?::varchar AS locale) AS lt_default \
-    WHERE lt_chain.locale = lt_default.locale OR ?->lt_chain.locale->>? IS NOT NULL \
+    CROSS JOIN LATERAL (SELECT CASE WHEN lt_chain.locale = lt_default.locale \
+    THEN ? ELSE ?->lt_chain.locale->>? END AS value) AS lt_value \
+    WHERE lt_value.value IS NOT NULL \
     ORDER BY lt_chain.position LIMIT 1), \
     ?)\
     """
@@ -68,9 +71,9 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
     ### Returns
 
     A `fragment/1` AST suitable for use in `Ecto.Query` clauses. For a field, the fragment
-    walks the chain: the default locale ends it at the base column, a locale with a
-    non-null translation ends it with that translation, and the base column is the value
-    when no locale matches. For a whole record, it is the first locale's translations, or
+    is the first non-null value in the chain, where a locale's value is its translation, or
+    the base column for the default locale, and the base column when no locale has one. A
+    `NULL` translation counts as missing, as it does in `Localize.Translate.translate/3`. For a whole record, it is the first locale's translations, or
     `NULL` when no locale in the chain has any.
 
     The chain is walked by a subquery over the locale array, which reads the container and
@@ -101,14 +104,15 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
         from a in Article, where: translated(Article, a.title, :fr) == "Elixir"
         #=> SELECT a0."id", a0."title", a0."body", a0."translations"
         #=> FROM "articles" AS a0
-        #=> WHERE (COALESCE((SELECT CASE WHEN lt_chain.locale = lt_default.locale
-        #=>   THEN a0."title" ELSE a0."translations"->lt_chain.locale->>$1 END
-        #=>   FROM unnest($2::varchar[]) WITH ORDINALITY AS lt_chain(locale, position)
-        #=>   CROSS JOIN (SELECT $3::varchar AS locale) AS lt_default
-        #=>   WHERE lt_chain.locale = lt_default.locale
-        #=>     OR a0."translations"->lt_chain.locale->>$4 IS NOT NULL
+        #=> WHERE (COALESCE((SELECT lt_value.value
+        #=>   FROM unnest($1::varchar[]) WITH ORDINALITY AS lt_chain(locale, position)
+        #=>   CROSS JOIN (SELECT $2::varchar AS locale) AS lt_default
+        #=>   CROSS JOIN LATERAL (SELECT CASE WHEN lt_chain.locale = lt_default.locale
+        #=>     THEN a0."title" ELSE a0."translations"->lt_chain.locale->>$3 END AS value)
+        #=>     AS lt_value
+        #=>   WHERE lt_value.value IS NOT NULL
         #=>   ORDER BY lt_chain.position LIMIT 1), a0."title") = 'Elixir')
-        #=> -- $1 = 'title', $2 = ['fr'], $3 = 'en' (the default locale), $4 = 'title'
+        #=> -- $1 = ['fr'], $2 = 'en' (the default locale), $3 = 'title'
 
         # Query items using a case insensitive comparison
         from a in Article, where: ilike(translated(Article, a.body, :es), "%elixir%")
@@ -223,11 +227,9 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
       quote do
         fragment(
           unquote(@field_sql),
-          unquote(base),
-          unquote(container),
-          ^unquote(to_string(field)),
           unquote(locales),
           unquote(default),
+          unquote(base),
           unquote(container),
           ^unquote(to_string(field)),
           unquote(base)
