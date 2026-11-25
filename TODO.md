@@ -6,6 +6,10 @@ Work planned for `localize_translate`; shipped changes are in the [CHANGELOG](CH
 
 * [ ] **Ash integration** — an Ash extension with a validated translations type, data-layer calculations for filtering and sorting, and runtime per-tenant locales, in a separate package, `ash_localize_translate`; proposal in [plans/ash-integration.md](plans/ash-integration.md). The package is built and tested; its review findings and first release remain, after `localize_translate` 0.4.0.
 
+## Blocked
+
+* [ ] **Call `Localize.Locale.fallback_chain/2` from `locale_chain/2`** — the parent walk in `Localize.Translate.Locale.expand_valid/2` moved into Localize, with the same chains; delete the copy here and keep the list inputs and `:default_locale`. Blocked on localize ~> 1.10.
+
 ## Done
 
 * [x] **A function default locale and Ecto writes** — `validate_translations/1` keeps the default locale out of the container, for map containers and generated embeds, checking only when the container or the default changes. 2026-11-24, unreleased (0.4.0).
