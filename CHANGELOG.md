@@ -1,5 +1,15 @@
 # Changelog
 
+## [v0.5.0] — Unreleased
+
+### Breaking changes
+
+* The store callback `queryable?/0` is now `c:Localize.Translate.Store.queryable?/1` and takes the schema, so a store shared by schemas kept in different data layers can answer for each. A custom store changes `def queryable?` to `def queryable?(_schema)`.
+
+### Added
+
+* `c:Localize.Translate.Store.fetch_translation/4` may return `{:error, exception}` for a store that could not answer, kept apart from `:error` for a missing translation. `translate/2,3` stop the fallback chain and return the base value; `translate!/3` raises the exception.
+
 ## [v0.4.0] — 2026-11-24
 
 Upgrading from an earlier release? See [Migrating to 0.4](https://hexdocs.pm/localize_translate/migrating_to_0_4.html), which covers the change from the `translate_field` database function to plain SQL and the database housekeeping.

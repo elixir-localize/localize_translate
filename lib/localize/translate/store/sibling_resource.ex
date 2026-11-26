@@ -122,7 +122,7 @@ defmodule Localize.Translate.Store.SiblingResource do
   end
 
   @impl Localize.Translate.Store
-  def queryable? do
+  def queryable?(_schema) do
     false
   end
 

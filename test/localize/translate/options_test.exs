@@ -66,7 +66,7 @@ defmodule Localize.Translate.OptionsTest do
         end
 
         @impl true
-        def queryable? do
+        def queryable?(_schema) do
           false
         end
       end

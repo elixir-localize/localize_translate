@@ -52,7 +52,7 @@ defmodule Localize.Translate.Store.Embedded do
   end
 
   @impl Localize.Translate.Store
-  def queryable? do
+  def queryable?(_schema) do
     true
   end
 

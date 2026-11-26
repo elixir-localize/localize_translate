@@ -806,7 +806,8 @@ defmodule Localize.Translate do
 
   * The translated struct, or the translated value of a single field. A locale that is
     not valid is left out of the chain, so the struct is returned untranslated when no
-    valid locale is left. A value that is not a struct is returned unchanged.
+    valid locale is left. A field whose store returns `{:error, exception}` keeps its
+    base value. A value that is not a struct is returned unchanged.
 
   ### Examples
 
@@ -867,7 +868,9 @@ defmodule Localize.Translate do
     its default locale kept, as `QueryBuilder.translated/4` filters it, so a stored
     locale the schema does not list is not read. A `nil` translation counts as missing,
     so the chain moves on to its next locale. A locale that is not valid, including `nil`, is left out of the
-    chain rather than raised on, so a locale taken from a request is safe to pass.
+    chain rather than raised on, so a locale taken from a request is safe to pass. A
+    store that returns `{:error, exception}`, one that could not answer, stops the chain
+    and the base value is returned; use `translate!/3` to have that raised.
 
   * The base value of a field that is not declared translatable, or `nil` for a field the
     struct does not have or a value that is not a struct. A string field name never
@@ -902,9 +905,8 @@ defmodule Localize.Translate do
     translatable = load_translations(translatable)
 
     case translate_field(translatable, chain, field, default_locale) do
-      :error -> Map.fetch!(translatable, field)
-      nil -> Map.fetch!(translatable, field)
-      translation -> translation
+      {:ok, translation} -> translation
+      _missing_or_error -> Map.fetch!(translatable, field)
     end
   end
 
@@ -929,6 +931,9 @@ defmodule Localize.Translate do
 
   * Raises a `RuntimeError` if no translation exists for any locale in the chain. A `nil`
     translation counts as missing.
+
+  * Raises the store's exception if the store returns `{:error, exception}`, one that
+    could not answer, such as an unreachable translation service.
 
   * Raises an `ArgumentError` if `translatable` is not a struct that uses
     `Localize.Translate` or `field` is not one of its translatable fields.
@@ -956,8 +961,9 @@ defmodule Localize.Translate do
     translatable = load_translations(translatable)
 
     case translate_field(translatable, chain, field, default_locale) do
+      {:ok, translation} -> translation
       :error -> raise no_translation_error(field, locale)
-      translation -> translation
+      {:error, exception} -> raise exception
     end
   end
 
@@ -1401,42 +1407,55 @@ defmodule Localize.Translate do
     end
   end
 
-  # The value of a locale is its translation, or the base field for the default locale.
-  # A `nil` value counts as missing, so a chain moves on to its next locale; this is the
-  # rule `QueryBuilder.translated/4` applies in SQL.
+  # The value of a chain is `{:ok, value}` for its first locale with a value: the
+  # translation, or the base field for the default locale. A `nil` value counts as
+  # missing, so a chain moves on to its next locale; this is the rule
+  # `QueryBuilder.translated/4` applies in SQL. `:error` means no locale has a value.
+  # A store that cannot answer stops the chain with `{:error, exception}`, since the
+  # next locale would ask the same store.
   defp translate_field(%{__struct__: _module} = struct, locales, field, default_locale)
        when is_list(locales) do
-    Enum.reduce_while(locales, :error, fn locale, translated_field ->
-      case translate_field(struct, locale, field, default_locale) do
-        :error -> {:cont, translated_field}
-        nil -> {:cont, translated_field}
-        translation -> {:halt, translation}
-      end
+    Enum.reduce_while(locales, :error, fn locale, missing ->
+      struct
+      |> locale_value(locale, field, default_locale)
+      |> next_locale(missing)
     end)
   end
 
-  defp translate_field(%{__struct__: _module} = struct, default_locale, field, default_locale) do
-    Map.fetch!(struct, field)
+  defp next_locale({:ok, nil}, missing) do
+    {:cont, missing}
   end
 
-  defp translate_field(%{__struct__: module} = struct, locale, field, _default_locale) do
+  defp next_locale({:ok, _value} = found, _missing) do
+    {:halt, found}
+  end
+
+  defp next_locale(:error, missing) do
+    {:cont, missing}
+  end
+
+  defp next_locale({:error, _exception} = error, _missing) do
+    {:halt, error}
+  end
+
+  defp locale_value(%{__struct__: _module} = struct, default_locale, field, default_locale) do
+    {:ok, Map.fetch!(struct, field)}
+  end
+
+  defp locale_value(%{__struct__: module} = struct, locale, field, _default_locale) do
     store = module.__trans__(:store)
-
-    case store.fetch_translation(struct, locale, field, module.__trans__(:store_options)) do
-      {:ok, nil} -> :error
-      {:ok, translated_field} -> translated_field
-      :error -> :error
-    end
+    store.fetch_translation(struct, locale, field, module.__trans__(:store_options))
   end
 
+  # A field with no value in the chain, or whose store could not answer, keeps its base
+  # value.
   defp translate_fields(%{__struct__: module} = struct, locale, default_locale) do
     fields = module.__trans__(:fields)
 
     Enum.reduce(fields, struct, fn field, struct ->
       case translate_field(struct, locale, field, default_locale) do
-        :error -> struct
-        nil -> struct
-        translation -> Map.put(struct, field, translation)
+        {:ok, translation} -> Map.put(struct, field, translation)
+        _missing_or_error -> struct
       end
     end)
   end

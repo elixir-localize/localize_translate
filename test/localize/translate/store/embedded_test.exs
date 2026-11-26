@@ -4,9 +4,9 @@ defmodule Localize.Translate.Store.EmbeddedTest do
   alias Localize.Translate.Article
   alias Localize.Translate.Store.Embedded
 
-  describe "queryable?/0" do
+  describe "queryable?/1" do
     test "reports that predicates can be pushed into the data layer" do
-      assert Embedded.queryable?() == true
+      assert Embedded.queryable?(Article) == true
     end
   end
 

@@ -21,7 +21,7 @@ defmodule Localize.Translate.Store do
 
   A store is any module implementing this behaviour. Storage need not be a
   database — an in-memory map, ETS, or a file are all valid, because only the
-  optional `c:queryable?/0` capability concerns databases.
+  optional `c:queryable?/1` capability concerns databases.
 
       defmodule MyApp.EtsStore do
         @behaviour Localize.Translate.Store
@@ -42,7 +42,7 @@ defmodule Localize.Translate.Store do
         end
 
         @impl true
-        def queryable? do
+        def queryable?(_schema) do
           false
         end
       end
@@ -55,11 +55,12 @@ defmodule Localize.Translate.Store do
 
   ## Querying
 
-  `c:queryable?/0` reports whether a store can push a translation predicate
-  into the data layer. Only stores backed by a database can — filtering by
-  translated text inside SQL has no meaning for an ETS or in-memory store, so
-  it is a capability a store declares rather than a callback every store must
-  implement.
+  `c:queryable?/1` reports whether a store can push a translation predicate
+  into the data layer for a given schema. Only stores backed by a database
+  can — filtering by translated text inside SQL has no meaning for an ETS or
+  in-memory store. It takes the schema because the answer can depend on it: a
+  store shared by several schemas may be queryable for one kept in PostgreSQL
+  and not for one kept in ETS.
 
   `Localize.Translate.QueryBuilder` requires a queryable store; it raises for
   any other, naming the store, rather than silently returning unfiltered rows.
@@ -105,9 +106,15 @@ defmodule Localize.Translate.Store do
   * `:error` if none exists, so the caller can try the next locale in the
     fallback chain.
 
+  * `{:error, exception}` if the store could not answer, such as a translation
+    service that is unreachable. This is a failure, not a missing translation:
+    `Localize.Translate.translate/2,3` stop the fallback chain and return the
+    base value, and `Localize.Translate.translate!/3` raises the exception, so a
+    caller can tell an outage from a translation that does not exist.
+
   """
   @callback fetch_translation(subject(), locale(), field(), options :: keyword()) ::
-              {:ok, term()} | :error
+              {:ok, term()} | :error | {:error, Exception.t()}
 
   @doc """
   Writes the translation of a single field.
@@ -187,17 +194,25 @@ defmodule Localize.Translate.Store do
   @callback locales(subject(), options :: keyword()) :: [locale()]
 
   @doc """
-  Returns whether the store can push translation predicates into the data layer.
+  Returns whether the store can push translation predicates into the data layer
+  for a schema.
+
+  ### Arguments
+
+  * `schema` is the module that uses `Localize.Translate`. A store reads the
+    options the schema declared for it with `schema.__trans__(:store_options)`,
+    and can inspect the schema itself, such as its data layer, when the answer
+    depends on where the schema is kept.
 
   ### Returns
 
   * `true` if `Localize.Translate.QueryBuilder` can build query fragments
-    against this store.
+    against this store for the schema.
 
   * `false` otherwise, in which case filtering happens in Elixir after loading.
 
   """
-  @callback queryable?() :: boolean()
+  @callback queryable?(schema :: module()) :: boolean()
 
   @optional_callbacks put_translation: 5, load_translations: 2
 end

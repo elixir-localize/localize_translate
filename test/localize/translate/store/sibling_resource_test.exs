@@ -35,9 +35,9 @@ defmodule Localize.Translate.Store.SiblingResourceTest do
     [page: page]
   end
 
-  describe "queryable?/0" do
+  describe "queryable?/1" do
     test "reports that predicates cannot be pushed into the data layer" do
-      refute SiblingResource.queryable?()
+      refute SiblingResource.queryable?(Page)
     end
   end
 
