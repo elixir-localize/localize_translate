@@ -396,6 +396,70 @@ defmodule Localize.Translate.QueryBuilderTest do
                  fn -> Code.eval_quoted(invalid_module) end
   end
 
+  describe "a store that is not queryable" do
+    # `Localize.Translate.Page` keeps its translations in `SiblingResource`, which fills
+    # the container in Elixir after loading, so there is no column for SQL to read.
+    @not_queryable "'Localize.Translate.Page' keeps its translations in " <>
+                     "Localize.Translate.Store.SiblingResource, which cannot be queried in SQL"
+
+    test "refuses a field query when it is compiled" do
+      query =
+        quote do
+          defmodule SiblingFieldQuery do
+            import Ecto.Query, only: [from: 2]
+            import Localize.Translate.QueryBuilder
+
+            def query do
+              from(p in Localize.Translate.Page,
+                where: translated(Localize.Translate.Page, p.title, :es) == "Título"
+              )
+            end
+          end
+        end
+
+      error = assert_raise ArgumentError, fn -> Code.eval_quoted(query) end
+      assert error.message =~ @not_queryable
+    end
+
+    test "refuses a whole-record query when it is compiled" do
+      query =
+        quote do
+          defmodule SiblingRecordQuery do
+            import Ecto.Query, only: [from: 2]
+            import Localize.Translate.QueryBuilder
+
+            def query do
+              from(p in Localize.Translate.Page,
+                where: not is_nil(translated(Localize.Translate.Page, p, :es))
+              )
+            end
+          end
+        end
+
+      error = assert_raise ArgumentError, fn -> Code.eval_quoted(query) end
+      assert error.message =~ @not_queryable
+    end
+
+    test "refuses translated_as/4 when it is compiled" do
+      query =
+        quote do
+          defmodule SiblingSelectQuery do
+            import Ecto.Query, only: [from: 2]
+            import Localize.Translate.QueryBuilder
+
+            def query do
+              from(p in Localize.Translate.Page,
+                select: %{p | title: translated_as(Localize.Translate.Page, p.title, :es)}
+              )
+            end
+          end
+        end
+
+      error = assert_raise ArgumentError, fn -> Code.eval_quoted(query) end
+      assert error.message =~ @not_queryable
+    end
+  end
+
   test "should allow passing the locale from a variable" do
     locale = :es
 

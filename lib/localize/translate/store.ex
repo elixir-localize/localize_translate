@@ -62,8 +62,10 @@ defmodule Localize.Translate.Store do
   store shared by several schemas may be queryable for one kept in PostgreSQL
   and not for one kept in ETS.
 
-  `Localize.Translate.QueryBuilder` requires a queryable store; it raises for
-  any other, naming the store, rather than silently returning unfiltered rows.
+  `Localize.Translate.QueryBuilder` requires a queryable store: a query on a
+  schema whose store's `c:queryable?/1` is not `true` raises an `ArgumentError`
+  naming the store when the query is compiled, rather than reading a container
+  column the store does not keep.
 
   """
 

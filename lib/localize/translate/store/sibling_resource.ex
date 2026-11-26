@@ -78,6 +78,10 @@ defmodule Localize.Translate.Store.SiblingResource do
   Reads therefore delegate to the embedded store, which already knows how to
   answer from that shape.
 
+  The container is virtual, so there is no column for SQL to read: the store is
+  not queryable, and `Localize.Translate.QueryBuilder` refuses a query on a
+  schema that uses it when the query is compiled.
+
   ## Options
 
   * `:repo` — the `Ecto.Repo` to query. Required.

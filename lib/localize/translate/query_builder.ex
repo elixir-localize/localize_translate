@@ -65,7 +65,11 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
     ### Arguments
 
     * `module` is the `Ecto.Schema` module that uses `Localize.Translate`. Validated at
-      compile time.
+      compile time: its store must be queryable for it, as
+      `c:Localize.Translate.Store.queryable?/1` reports, or the query raises an
+      `ArgumentError` when it is compiled. `Localize.Translate.Store.Embedded` is;
+      `Localize.Translate.Store.SiblingResource`, whose container is filled after loading,
+      is not.
 
     * `translatable` is either a query binding (such as `a`) for whole-record access, or a
       field access expression (such as `a.title`) for a specific translatable field.
@@ -166,6 +170,7 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
       field = field(translatable)
       module = Macro.expand(module, __CALLER__)
       validate_field(module, field)
+      validate_store(module)
       default_call = default_locale_call(module, options)
       locales = locales_param(module, locale, default_call)
       default = quote do: ^unquote(default_call)
@@ -379,6 +384,32 @@ if Code.ensure_loaded?(Ecto.Adapters.SQL) do
         true ->
           nil
       end
+    end
+
+    # A query reads the container column in SQL, which only a queryable store keeps.
+    # Checked when the query is compiled, so a store such as `SiblingResource`, whose
+    # container is filled in Elixir after loading, is refused rather than read as an
+    # empty column. `Code.ensure_compiled/1` waits for a schema the project is still
+    # compiling, where `function_exported?/3` alone would skip the check. A module that
+    # does not use `Localize.Translate` is left to the query, which reports it.
+    defp validate_store(module) do
+      if match?({:module, _}, Code.ensure_compiled(module)) and
+           function_exported?(module, :__trans__, 1) do
+        store = module.__trans__(:store)
+        queryable_store(module, store, store.queryable?(module))
+      end
+    end
+
+    defp queryable_store(_module, _store, true) do
+      nil
+    end
+
+    defp queryable_store(module, store, _not_queryable) do
+      raise ArgumentError,
+        message:
+          "'#{inspect(module)}' keeps its translations in #{inspect(store)}, which cannot " <>
+            "be queried in SQL: #{inspect(store)}.queryable?/1 is false for it. Load the " <>
+            "records and translate them with Localize.Translate.translate/2,3 instead"
     end
   end
 end

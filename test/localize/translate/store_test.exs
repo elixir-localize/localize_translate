@@ -139,5 +139,47 @@ defmodule Localize.Translate.StoreTest do
       assert PerSchemaStore.queryable?(PostgresNote)
       refute PerSchemaStore.queryable?(EtsNote)
     end
+
+    test "QueryBuilder accepts the schema the store is queryable for" do
+      schema = PostgresNote
+
+      query =
+        quote do
+          defmodule PostgresNoteQuery do
+            import Ecto.Query, only: [from: 2]
+            import Localize.Translate.QueryBuilder
+
+            def query do
+              from(n in unquote(schema),
+                where: translated(unquote(schema), n.title, :es) == "Nota"
+              )
+            end
+          end
+        end
+
+      assert {{:module, _module, _binary, _}, _binding} = Code.eval_quoted(query)
+    end
+
+    test "QueryBuilder refuses the schema the store is not queryable for" do
+      schema = EtsNote
+
+      query =
+        quote do
+          defmodule EtsNoteQuery do
+            import Ecto.Query, only: [from: 2]
+            import Localize.Translate.QueryBuilder
+
+            def query do
+              from(n in unquote(schema),
+                where: translated(unquote(schema), n.title, :es) == "Nota"
+              )
+            end
+          end
+        end
+
+      error = assert_raise ArgumentError, fn -> Code.eval_quoted(query) end
+
+      assert error.message =~ "cannot be queried in SQL"
+    end
   end
 end
