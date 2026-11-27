@@ -12,6 +12,10 @@
 
 * `c:Localize.Translate.Store.fetch_translation/4` may return `{:error, exception}` for a store that could not answer, kept apart from `:error` for a missing translation. `translate/2,3` stop the fallback chain and return the base value; `translate!/3` raises the exception.
 
+### Changed
+
+* A locale's translations are stored and read under the CLDR locale it names, whatever locales Localize is configured for: with only `en` and `fr` configured, `he` is `:he` and `pt-BR` is `:pt`, where both were `:en`. Chains come from `Localize.Locale.fallback_chain/2`; requires `localize ~> 1.11`.
+
 ## [v0.4.0] — 2026-11-24
 
 Upgrading from an earlier release? See [Migrating to 0.4](https://hexdocs.pm/localize_translate/migrating_to_0_4.html), which covers the change from the `translate_field` database function to plain SQL and the database housekeeping.

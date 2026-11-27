@@ -1,5 +1,8 @@
 # Status
 
-**Status:** active, 2026-11-24
+**Status:** active, 2026-11-28
+
+**Next release:** 0.5.0
+**Blocked on:** localize ~> 1.11
 
 Under development; functional work is tracked in `TODO.md` and designed in `plans/`.

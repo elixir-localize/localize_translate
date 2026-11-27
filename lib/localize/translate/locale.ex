@@ -2,9 +2,11 @@ defmodule Localize.Translate.Locale do
   @moduledoc false
 
   # Single entry point for locale handling. Every locale value (atom, string, or
-  # `Localize.LanguageTag`) is validated via `Localize.validate_locale/1` and unwrapped
-  # to its `:cldr_locale_id` atom. Fallback chains are constructed by walking
-  # CLDR parent locales.
+  # `Localize.LanguageTag`) is resolved by `Localize.Locale.fallback_chain/1`: the CLDR
+  # locale it names, and that locale's parents. Both are independent of the locales
+  # Localize is configured for, so a translation is stored and read under the locale it
+  # was given for: with only `en` and `fr` configured, `pt-BR` is `:pt`, where
+  # `Localize.validate_locale/1` would negotiate it to `:en`.
   #
   # Locale identifiers are a bounded set defined by CLDR, not free-form keys, so every
   # input is validated. An invalid one is never raised at runtime: `expand/2` returns it
@@ -31,10 +33,10 @@ defmodule Localize.Translate.Locale do
   end
 
   @doc """
-  Validates `locale` and returns the canonical `:cldr_locale_id` atom.
+  Validates `locale` and returns the CLDR locale it names, as an atom.
 
   Raises `Localize.InvalidLocaleError` (or whatever exception
-  `Localize.validate_locale/1` returns) if the input cannot be resolved to a CLDR
+  `Localize.Locale.fallback_chain/1` returns) if the input cannot be resolved to a CLDR
   locale.
   """
   @spec normalise!(input()) :: atom()
@@ -46,26 +48,24 @@ defmodule Localize.Translate.Locale do
   end
 
   @doc """
-  Validates `locale` and returns its canonical `:cldr_locale_id` atom.
+  Validates `locale` and returns the CLDR locale it names, as an atom: the first locale
+  of its fallback chain, whatever locales Localize is configured for.
 
   Returns `{:ok, locale_id}`, or `{:error, exception}` when `locale` (including `nil`) is
   not a valid locale or resolves to the CLDR root, `und`.
   """
   @spec normalise(input() | nil) :: {:ok, atom()} | {:error, Exception.t()}
-  def normalise(nil) do
-    {:error, Localize.InvalidLocaleError.exception(locale_id: "nil")}
-  end
-
   def normalise(locale) do
-    case Localize.validate_locale(locale) do
-      {:ok, %LanguageTag{cldr_locale_id: :und}} -> no_cldr_data(locale)
-      {:ok, tag} -> {:ok, tag.cldr_locale_id}
+    case Localize.Locale.fallback_chain(locale) do
+      {:ok, [locale_id | _parents]} -> {:ok, locale_id}
+      {:ok, []} -> no_cldr_data(locale)
       {:error, _exception} = error -> error
     end
   end
 
-  # A locale CLDR has no data for resolves to the root, `und`. Every such locale would
-  # share that one key, so it is not a locale translations can be stored or read under.
+  # A locale CLDR has no data for resolves to the root, `und`, whose chain is empty.
+  # Every such locale would share that one key, so it is not a locale translations can
+  # be stored or read under.
   defp no_cldr_data(locale) do
     {:error, Localize.InvalidLocaleError.exception(locale_id: inspect(locale))}
   end
@@ -73,8 +73,9 @@ defmodule Localize.Translate.Locale do
   @doc """
   Expands `input` into a CLDR-aware locale fallback chain.
 
-  Each input is validated and then walked up the CLDR parent chain (e.g. `:"en-AU"` →
-  `:"en-001"` → `:en`, stopping before the `:und` root). Lists are flattened, validated
+  Each input is resolved to its CLDR locale and that locale's parents by
+  `Localize.Locale.fallback_chain/1` (e.g. `:"en-AU"` → `:"en-001"` → `:en`, stopping
+  before the `:und` root), whatever locales Localize is configured for. Lists are flattened, validated
   per-element, and deduplicated in input order.
 
   When `supported` is a non-empty list, the chain is filtered to only those locales —
@@ -160,45 +161,11 @@ defmodule Localize.Translate.Locale do
     |> filter_supported(supported)
   end
 
-  # `nil` is refused here rather than left to `Localize.validate_locale/1`, which before
-  # localize 1.10 read it as the language subtag `nil`.
-  defp expand_one(nil) do
-    {:error, Localize.InvalidLocaleError.exception(locale_id: "nil")}
-  end
-
   # A locale that resolves to the root, `und`, has no CLDR data and contributes nothing
-  # to a chain, as the root itself does not.
+  # to a chain, as the root itself does not: its fallback chain is empty. `nil` is not a
+  # locale, and is an error.
   defp expand_one(input) do
-    case Localize.validate_locale(input) do
-      {:ok, %LanguageTag{cldr_locale_id: :und}} -> {:ok, []}
-      {:ok, tag} -> {:ok, walk_parents(tag, [tag.cldr_locale_id])}
-      {:error, _exception} = error -> error
-    end
-  end
-
-  # Stop at `und` (the CLDR root) without appending it — querying for `:und`
-  # translations is meaningless and only adds noise to the fallback chain.
-  defp walk_parents(%LanguageTag{language: :und}, acc) do
-    Enum.reverse(acc)
-  end
-
-  defp walk_parents(%LanguageTag{} = tag, acc) do
-    case Localize.Locale.parent(tag) do
-      {:ok, %LanguageTag{language: :und}} -> Enum.reverse(acc)
-      {:ok, parent} -> walk_parents(parent, [derive_cldr_locale_id(parent) | acc])
-      {:error, _exception} -> Enum.reverse(acc)
-    end
-  end
-
-  # `Localize.Locale.parent/1` returns a `LanguageTag` with the structural subtags
-  # populated but `:cldr_locale_id` inherited from the child. Re-derive by
-  # round-tripping the serialised form through `cldr_locale_id_from/1`, which
-  # normalises e.g. `"fr-Latn"` to `:fr`.
-  defp derive_cldr_locale_id(%LanguageTag{} = tag) do
-    case Localize.Locale.cldr_locale_id_from(LanguageTag.to_string(tag)) do
-      {:ok, id} -> id
-      {:error, _} -> nil
-    end
+    Localize.Locale.fallback_chain(input)
   end
 
   defp filter_supported(chain, nil) do
