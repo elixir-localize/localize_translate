@@ -1,8 +1,8 @@
 # Ash integration
 
-**Status:** in progress, 2026-11-24
+**Status:** implemented (v0.4.0), 2026-11-26
 
-A design for using `Localize.Translate` with Ash resources, prompted by mishka_cms_core, an Ash application whose sites each choose their languages at runtime. The extension is built as its own package, `ash_localize_translate`, and tested on ETS and AshPostgres; the defects a final review found are fixed, and its first release waits on `localize_translate` 0.4.0 reaching hex.
+A design for using `Localize.Translate` with Ash resources, prompted by mishka_cms_core, an Ash application whose sites each choose their languages at runtime. The extension was built as its own package, `ash_localize_translate`, and has since been merged into a fork of [`ash_localize`](https://github.com/team-alembic/ash_localize) as `AshLocalize.Translations`, to be offered upstream; the separate package is retired. The core changes it needed shipped in 0.4.0, and the store callback changes the `ash_localize` maintainers asked for (`queryable?/1`, an error return from `fetch_translation/4`) in 0.5.0. The rest of this document records the design as built, under its original package name.
 
 ## The problem
 
@@ -149,9 +149,9 @@ Run 2026-11-24 against Ash 3.38.0, AshPostgres 2.16 and Spark 2.7.10, in a throw
 
 ## Tasks
 
-* [ ] **Release** — `localize_translate` 0.4.0, then `ash_localize_translate` 0.1.0 depending on it from hex.
-
 ### Done
+
+* [x] **Release** — `localize_translate` 0.4.0 on hex; the Ash package was merged into `ash_localize` instead of released on its own. 2026-11-26.
 
 * [x] **Fix the review's findings in `ash_localize_translate`** — `false` translations, stored value types, repairable rows, whitespace values, crashes on structs, dialyzer, and transformer order, each with tests on ETS and AshPostgres. 2026-11-24.
 

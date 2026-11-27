@@ -553,7 +553,7 @@ Validation catches typos in `:locales` at compile time, but locks you out of fre
 
 ## Where to next
 
-* For Ash resources, [`ash_localize_translate`](https://github.com/elixir-localize/ash_localize_translate) keeps translations in the same column shape, adds `translated_<field>` calculations that filter and sort in SQL, and validates writes against each tenant's languages.
+* For Ash resources, the `AshLocalize.Translations` extension being contributed to [`ash_localize`](https://github.com/team-alembic/ash_localize) keeps translations in the same column shape, adds `translated_<field>` calculations that filter and sort in SQL, and validates writes against each tenant's languages.
 
 * The `Localize.Translate` moduledoc describes the `use` macro options in full.
 

@@ -16,7 +16,7 @@
 
 * **Storage backends** — the `Localize.Translate.Store` behaviour, with an embedded store (the default) and a sibling-table store, one row per subject and locale.
 
-* **Ash resources** — [`ash_localize_translate`](https://github.com/elixir-localize/ash_localize_translate) brings the same storage and fallback to Ash, with translated calculations that filter and sort in the data layer.
+* **Ash resources** — an Ash extension with the same storage and fallback, `AshLocalize.Translations`, is being contributed to [`ash_localize`](https://github.com/team-alembic/ash_localize), with translated calculations that filter and sort in the data layer.
 
 ## Supported Elixir and OTP versions
 
@@ -31,7 +31,7 @@ Add `localize_translate` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:localize_translate, "~> 0.4"}
+    {:localize_translate, "~> 0.5"}
   ]
 end
 ```
@@ -234,4 +234,4 @@ The full documentation is on [HexDocs](https://hexdocs.pm/localize_translate).
 
 ## License
 
-`localize_translate` is released under the Apache License 2.0; see [LICENSE.md](https://github.com/elixir-localize/localize_translate/blob/v0.4.0/LICENSE.md).
+`localize_translate` is released under the Apache License 2.0; see [LICENSE.md](https://github.com/elixir-localize/localize_translate/blob/v0.5.0/LICENSE.md).
