@@ -88,7 +88,7 @@ defmodule Localize.Translate.MixProject do
   defp deps do
     [
       {:ecto, "~> 3.0"},
-      {:localize, "~> 1.0"},
+      {:localize, "~> 1.11"},
 
       # Optional dependencies
       {:ecto_sql, "~> 3.0", optional: true},
